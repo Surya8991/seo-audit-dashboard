@@ -86,11 +86,24 @@ prior standalone Streamlit SEO audit tool ported in on top.
   www-redirect consistency, HTTP/2, aggregated as `site_health`
 - `modules/ai_assist.py`: Groq `explain_audit()`
 - `modules/technical_audit_checklist.py`: builds the 35-check "Technical SEO
-  Audit" checklist (crawlability/on_page/site_health groups, pass/warning/fail
-  per check) ported from the standalone tool's use-case definition; it's a
+  Audit" checklist (crawlability/on_page/site_health groups, pass/warning/
+  fail/**info** per check, the "info" status is the email-DNS checks, see
+  below) ported from the standalone tool's use-case definition; it's a
   read-only view derived from an already-computed `audit_url()` result, never
-  re-fetches or re-scores. Exposed as `result["technical_audit_checklist"]`
-  and rendered on the "Technical Audit" tab of `app/detail/page.tsx`.
+  re-fetches or re-scores. Exposed as `result["technical_audit_checklist"]`.
+- **Detail page "Technical" tab** (`app/detail/page.tsx`): a single merged tab
+  (previously two separate "Technical Audit" and "Technical" tabs, confusing
+  side by side; merged into one). Organized into the checklist's 3 real
+  use-case sections, Crawlability / On-Page / Site Health, each pairing the
+  pass/warning/fail/info `ChecklistGroupCard` for that group with its matching
+  rich detail card(s): Crawlability -> redirect chain + hreflang; On-Page ->
+  Schema Audit (structured-data types/errors), Mobile Responsiveness (summary
+  card, cross-links to the full mobile audit on the Performance tab instead of
+  duplicating it), Social Preview (OG); Site Health -> domain/protocol detail
+  + security headers. The old "estimated Core Web Vitals" card was dropped
+  (superseded by Performance tab's real PSI-based CWV, keeping it was a
+  duplicate). Detail tabs are now 8: Overview, Technical, Issues, Links,
+  Headings, Content & Images, Performance, Recommendations.
 - `lib/checklistDefs.ts`: the **frontend mirror** of the 35 check ids/labels/
   groups in `modules/technical_audit_checklist.py`, plus a one-sentence
   plain-English `description` per check (used by the explainer card, the
@@ -100,7 +113,7 @@ prior standalone Streamlit SEO audit tool ported in on top.
 - `lib/useSelectedChecks.ts`: shared localStorage-persisted hook for which
   checks are enabled (default: all 35). Used by `components/CheckSelector.tsx`
   (the "Customize checks" panel on the Technical Audit page) to edit the
-  selection, and by the detail page's Technical Audit tab to filter which
+  selection, and by the detail page's Technical tab to filter which
   checks are displayed. **Display-only filter**: the backend always computes
   all 35 checks in one `audit_url()` call regardless of selection, since
   they're bundled into a single page fetch and skipping individual checks
