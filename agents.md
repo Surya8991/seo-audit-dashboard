@@ -21,7 +21,13 @@ prior standalone Streamlit SEO audit tool ported in on top.
 ## Key directories/files
 - `app/`: Next.js pages: dashboard (`/`), **`technical-audit`** (single URL,
   sitemap, crawl, or CSV-paste multi-input audit, formerly `new-audit`),
-  results, detail, links, headings, performance, export, settings
+  results (domain-grouped list), detail (per-URL drill-down), export, settings.
+  The former standalone `links`, `headings`, and `performance` pages are folded
+  into `app/detail/page.tsx` as tabs backed by `components/detail/LinksView.tsx`,
+  `HeadingsView.tsx`, and `PerformanceView.tsx`. Nav is 5 items: results and
+  detail are one section (`/detail` highlights "Results", see
+  `resolveActiveHref` in `components/AppShell.tsx`); the list routes to the
+  detail via `setSelectedUrlIndex` + `router.push("/detail")`.
 - `api/audit.py`: runs a full audit for one URL, returns `modules.auditor.audit_url()` almost verbatim
 - `api/sitemap.py`: resolves a sitemap (or bare domain) to a URL list for the
   sitewide Technical Audit; see "Sitewide/bulk audit architecture" below

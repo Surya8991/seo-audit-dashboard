@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useAudit } from "@/lib/state/AuditContext";
 import { Card, EmptyState, IssueRow, PageHeader, ScoreBadge, StatusPill } from "@/components/ui";
 import { getThematicIssues, getTopIssuesByImpact } from "@/lib/aggregate";
@@ -10,13 +11,18 @@ import type { ChecklistItem } from "@/lib/types";
 import { CHECK_DEFS, GROUP_HELP, GROUP_LABELS } from "@/lib/checklistDefs";
 import { HelpDialog } from "@/components/HelpDialog";
 import { useSelectedChecks } from "@/lib/useSelectedChecks";
+import { LinksView } from "@/components/detail/LinksView";
+import { HeadingsView } from "@/components/detail/HeadingsView";
+import { PerformanceView } from "@/components/detail/PerformanceView";
 
 const TABS = [
   "Overview",
   "Technical Audit",
   "Issues",
   "Links",
+  "Headings",
   "Content & Images",
+  "Performance",
   "Technical",
   "Recommendations",
 ] as const;
@@ -203,6 +209,12 @@ export default function DetailPage() {
 
   return (
     <div>
+      <Link
+        href="/results"
+        className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-[var(--seo-accent)] hover:underline"
+      >
+        ← Back to results
+      </Link>
       <PageHeader title="🔎 URL Detail" subtitle={r.url} />
 
       {results.length > 1 ? (
@@ -404,36 +416,9 @@ export default function DetailPage() {
         </div>
       ) : null}
 
-      {tab === "Links" ? (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Card>
-            <h3 className="mb-3 text-sm font-semibold text-[var(--seo-subheading)]">
-              Internal Links
-            </h3>
-            <KeyValueGrid
-              data={{
-                total: r.internal_links?.total_links,
-                dofollow: r.internal_links?.dofollow_count,
-                nofollow: r.internal_links?.nofollow_count,
-                broken: r.internal_links?.broken_count,
-              }}
-            />
-          </Card>
-          <Card>
-            <h3 className="mb-3 text-sm font-semibold text-[var(--seo-subheading)]">
-              External Links
-            </h3>
-            <KeyValueGrid
-              data={{
-                total: r.external_links?.total_links,
-                dofollow: r.external_links?.dofollow_count,
-                nofollow: r.external_links?.nofollow_count,
-                broken: r.external_links?.broken_count,
-              }}
-            />
-          </Card>
-        </div>
-      ) : null}
+      {tab === "Links" ? <LinksView result={r} /> : null}
+
+      {tab === "Headings" ? <HeadingsView result={r} allResults={results} /> : null}
 
       {tab === "Content & Images" ? (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -486,6 +471,8 @@ export default function DetailPage() {
           </Card>
         </div>
       ) : null}
+
+      {tab === "Performance" ? <PerformanceView result={r} /> : null}
 
       {tab === "Technical" ? (
         (() => {

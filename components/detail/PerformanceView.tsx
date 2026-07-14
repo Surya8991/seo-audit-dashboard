@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo, useState, Fragment } from "react";
-import { useAudit } from "@/lib/state/AuditContext";
-import { Card, EmptyState, MetricCard, PageHeader } from "@/components/ui";
+import { useEffect, useMemo, useState, Fragment } from "react";
+import { Card, MetricCard } from "@/components/ui";
 import { downloadCsv } from "@/lib/format";
 import type { AuditResult } from "@/lib/types";
 import {
@@ -72,24 +71,22 @@ function groupChecksByCategory(checks: MobileCheck[]) {
   return CATEGORY_ORDER.filter((cat) => groups.has(cat)).map((cat) => ({ category: cat, checks: groups.get(cat)! }));
 }
 
-export default function PerformancePage() {
-  const { results } = useAudit();
-  const [selectedIdx, setSelectedIdx] = useState(0);
+export function PerformanceView({ result }: { result: AuditResult }) {
   const [subTab, setSubTab] = useState<"Mobile" | "Image SEO">("Mobile");
   const [psiLoading, setPsiLoading] = useState(false);
   const [psiError, setPsiError] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PSI JSON is dynamically shaped; typed accessors below narrow at use sites.
   const [livePsi, setLivePsi] = useState<Record<string, any> | null>(null);
 
-  if (results.length === 0) {
-    return (
-      <div>
-        <PageHeader title="⚡ Performance Audit" />
-        <EmptyState title="No audits yet" hint="Run an audit to see performance data." />
-      </div>
-    );
-  }
+  // Reset cached PSI + fetch state whenever the target URL changes so a stale
+  // fetch from a previously-viewed URL never leaks into this one.
+  useEffect(() => {
+    setLivePsi(null);
+    setPsiError(null);
+    setPsiLoading(false);
+  }, [result.url]);
 
-  const r = results[Math.min(selectedIdx, results.length - 1)];
+  const r = result;
   const mobile = r.mobile_audit || {};
   // /api/pagespeed (modules/pagespeed.py fetch_pagespeed) returns metrics as
   // flat top-level fields, not nested under a "cwv" key like mobile_audit.cwv does.
@@ -133,25 +130,6 @@ export default function PerformancePage() {
 
   return (
     <div>
-      <PageHeader title="⚡ Performance Audit" subtitle={r.url} />
-
-      {results.length > 1 ? (
-        <select
-          value={selectedIdx}
-          onChange={(e) => {
-            setSelectedIdx(Number(e.target.value));
-            setLivePsi(null);
-          }}
-          className="mb-4 rounded-lg border border-[var(--seo-border-strong)] bg-[var(--seo-card-bg)] px-3 py-2 text-sm text-[var(--seo-text)]"
-        >
-          {results.map((res, i) => (
-            <option key={res.url} value={i}>
-              {res.url}
-            </option>
-          ))}
-        </select>
-      ) : null}
-
       <div className="mb-4 flex gap-1 border-b border-[var(--seo-border)]">
         {(["Mobile", "Image SEO"] as const).map((t) => (
           <button
@@ -293,7 +271,7 @@ export default function PerformancePage() {
           </Card>
         </div>
       ) : (
-        <ImageSeoTab results={results} showSource={results.length > 1} />
+        <ImageSeoTab results={[r]} showSource={false} />
       )}
     </div>
   );

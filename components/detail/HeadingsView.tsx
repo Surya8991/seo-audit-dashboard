@@ -1,10 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useAudit } from "@/lib/state/AuditContext";
-import { Card, EmptyState, MetricCard, PageHeader } from "@/components/ui";
+import { Card, MetricCard } from "@/components/ui";
 import { downloadCsv } from "@/lib/format";
-import type { Issue } from "@/lib/types";
+import type { AuditResult, Issue } from "@/lib/types";
 import { explainHeadingIssue, STATUS_COLOR_HEX } from "@/lib/headingAnalysis";
 
 const TABS = ["Hierarchy Tree", "Heading List", "H1 Across Site", "Issues"] as const;
@@ -19,22 +18,11 @@ interface HeadingItem {
   id_attr: string | null;
 }
 
-export default function HeadingsPage() {
-  const { results } = useAudit();
-  const [selectedIdx, setSelectedIdx] = useState(0);
+export function HeadingsView({ result, allResults }: { result: AuditResult; allResults: AuditResult[] }) {
   const [tab, setTab] = useState<Tab>("Hierarchy Tree");
   const [expandedIssue, setExpandedIssue] = useState<number | null>(null);
 
-  if (results.length === 0) {
-    return (
-      <div>
-        <PageHeader title="📝 Heading Analysis" />
-        <EmptyState title="No audits yet" hint="Run an audit to see heading structure." />
-      </div>
-    );
-  }
-
-  const r = results[Math.min(selectedIdx, results.length - 1)];
+  const r = result;
   const hd = r.heading_detail || {};
   const headings: HeadingItem[] = hd.headings || [];
   const counts = hd.counts || {};
@@ -48,7 +36,7 @@ export default function HeadingsPage() {
 
   function exportSiteH1Csv() {
     const rows = [["URL", "H1 Text", "H1 Count"]];
-    for (const res of results) {
+    for (const res of allResults) {
       rows.push([res.url, res.heading_detail?.h1_text || "", String(res.heading_detail?.counts?.h1 ?? 0)]);
     }
     downloadCsv("site-h1-report.csv", rows);
@@ -56,22 +44,6 @@ export default function HeadingsPage() {
 
   return (
     <div>
-      <PageHeader title="📝 Heading Analysis" subtitle={r.url} />
-
-      {results.length > 1 ? (
-        <select
-          value={selectedIdx}
-          onChange={(e) => setSelectedIdx(Number(e.target.value))}
-          className="mb-4 rounded-lg border border-[var(--seo-border-strong)] bg-[var(--seo-card-bg)] px-3 py-2 text-sm text-[var(--seo-text)]"
-        >
-          {results.map((res, i) => (
-            <option key={res.url} value={i}>
-              {res.url}
-            </option>
-          ))}
-        </select>
-      ) : null}
-
       <div className="mb-4 grid grid-cols-3 gap-4 md:grid-cols-6">
         {(["h1", "h2", "h3", "h4", "h5", "h6"] as const).map((lvl) => (
           <MetricCard key={lvl} label={lvl.toUpperCase()} value={counts[lvl] ?? 0} />
@@ -165,7 +137,7 @@ export default function HeadingsPage() {
               </tr>
             </thead>
             <tbody>
-              {results.map((res) => (
+              {allResults.map((res) => (
                 <tr key={res.url} className="border-b border-[var(--table-row-border)]">
                   <td className="max-w-xs truncate px-4 py-3">{res.url}</td>
                   <td className="px-4 py-3">{res.heading_detail?.h1_text || <em>none</em>}</td>

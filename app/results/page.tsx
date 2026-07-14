@@ -3,8 +3,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAudit } from "@/lib/state/AuditContext";
-import { Card, EmptyState, PageHeader, ScoreBadge, ScoreCircle } from "@/components/ui";
+import { Card, EmptyState, PageHeader, ScoreBadge, ScoreCircle, StatusPill } from "@/components/ui";
 import { allIssuesOf, avgScore } from "@/lib/aggregate";
+import type { AuditResult } from "@/lib/types";
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+function worstIssue(r: AuditResult): string {
+  const issues = r.all_issues || [];
+  if (issues.length === 0) return "";
+  return [...issues].sort((a, b) => (b.impact_score ?? 0) - (a.impact_score ?? 0))[0].issue;
+}
 
 export default function ResultsPage() {
   const { results, navFilter, setNavFilter, setSelectedUrlIndex, clearAll } = useAudit();
@@ -13,6 +28,7 @@ export default function ResultsPage() {
   const [scoreMax, setScoreMax] = useState(100);
   const [brokenOnly, setBrokenOnly] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!navFilter) return;
@@ -34,6 +50,29 @@ export default function ResultsPage() {
       return true;
     });
   }, [results, scoreMax, brokenOnly]);
+
+  // Group the filtered rows by domain so a sitewide audit reads as one section
+  // per site (worst-scoring domains first, then worst URLs within each).
+  const groups = useMemo(() => {
+    const byHost = new Map<string, AuditResult[]>();
+    for (const r of filtered) {
+      const h = hostOf(r.url);
+      if (!byHost.has(h)) byHost.set(h, []);
+      byHost.get(h)!.push(r);
+    }
+    return [...byHost.entries()]
+      .map(([host, rows]) => ({
+        host,
+        rows: [...rows].sort((a, b) => (a.seo_score ?? 0) - (b.seo_score ?? 0)),
+        avg: avgScore(rows),
+      }))
+      .sort((a, b) => a.avg - b.avg);
+  }, [filtered]);
+
+  function openDetail(r: AuditResult) {
+    setSelectedUrlIndex(results.indexOf(r));
+    router.push("/detail");
+  }
 
   // Sitewide rollup: only meaningful when more than one URL was audited.
   const rollup = useMemo(() => {
@@ -160,57 +199,87 @@ export default function ResultsPage() {
         </div>
       </Card>
 
-      <Card className="overflow-x-auto p-0">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[var(--seo-border)] bg-[var(--table-header-bg)] text-left text-xs uppercase tracking-wide text-[var(--seo-muted)]">
-              <th className="px-4 py-3">URL</th>
-              <th className="px-4 py-3">Type</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Score</th>
-              <th className="px-4 py-3">Issues</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((r, idx) => {
-              const originalIdx = results.indexOf(r);
-              return (
-                <tr
-                  key={r.url + idx}
-                  className="border-b border-[var(--table-row-border)] hover:bg-[var(--table-row-hover)]"
-                >
-                  <td className="max-w-xs truncate px-4 py-3 font-medium text-[var(--seo-subheading)]">
-                    {r.url}
-                  </td>
-                  <td className="px-4 py-3 capitalize text-[var(--seo-text-light)]">
-                    {r.audit_type}
-                  </td>
-                  <td className="px-4 py-3 text-[var(--seo-text-light)]">{r.status_code ?? "N/A"}</td>
-                  <td className="px-4 py-3">
-                    <ScoreBadge score={r.seo_score ?? 0} />
-                  </td>
-                  <td className="px-4 py-3 text-[var(--seo-text-light)]">
-                    {r.all_issues?.length ?? 0}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedUrlIndex(originalIdx);
-                        router.push("/detail");
-                      }}
-                      className="text-sm font-medium text-[var(--seo-accent)] hover:underline"
-                    >
-                      View Detail →
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </Card>
+      <div className="flex flex-col gap-4">
+        {groups.map((g) => {
+          const isCollapsed = collapsed[g.host];
+          return (
+            <Card key={g.host} className="overflow-hidden p-0">
+              <button
+                type="button"
+                onClick={() => setCollapsed((c) => ({ ...c, [g.host]: !c[g.host] }))}
+                className="flex w-full items-center justify-between gap-3 border-b border-[var(--seo-border)] bg-[var(--table-header-bg)] px-4 py-2.5 text-left"
+              >
+                <span className="flex items-center gap-2">
+                  <span className={`text-[var(--seo-muted)] transition-transform ${isCollapsed ? "" : "rotate-90"}`}>▸</span>
+                  <span className="font-semibold text-[var(--seo-subheading)]">{g.host}</span>
+                  <span className="text-xs text-[var(--seo-muted)]">
+                    {g.rows.length} URL{g.rows.length > 1 ? "s" : ""}
+                  </span>
+                </span>
+                <span className="flex items-center gap-2 text-xs text-[var(--seo-muted)]">
+                  avg <ScoreBadge score={g.avg} />
+                </span>
+              </button>
+
+              {!isCollapsed ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--seo-border)] text-left text-xs uppercase tracking-wide text-[var(--seo-muted)]">
+                        <th className="px-4 py-2.5">URL</th>
+                        <th className="px-4 py-2.5">Score</th>
+                        <th className="px-4 py-2.5">Checklist</th>
+                        <th className="px-4 py-2.5">Top issue</th>
+                        <th className="px-4 py-2.5" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {g.rows.map((r, idx) => {
+                        const cl = r.technical_audit_checklist?.summary;
+                        const top = worstIssue(r);
+                        return (
+                          <tr
+                            key={r.url + idx}
+                            onClick={() => openDetail(r)}
+                            className="cursor-pointer border-b border-[var(--table-row-border)] last:border-0 hover:bg-[var(--table-row-hover)]"
+                          >
+                            <td className="max-w-xs truncate px-4 py-3 font-medium text-[var(--seo-subheading)]">
+                              {new URL(r.url).pathname || r.url}
+                              {r.status_code && r.status_code !== 200 ? (
+                                <span className="ml-2 text-xs text-[var(--seo-error)]">{r.status_code}</span>
+                              ) : null}
+                            </td>
+                            <td className="px-4 py-3">
+                              <ScoreBadge score={r.seo_score ?? 0} />
+                            </td>
+                            <td className="px-4 py-3">
+                              {cl ? (
+                                <span className="flex items-center gap-1.5 text-xs">
+                                  <StatusPill status="pass" /> {cl.pass}
+                                  <StatusPill status="warning" /> {cl.warning}
+                                  <StatusPill status="fail" /> {cl.fail}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-[var(--seo-muted)]">N/A</span>
+                              )}
+                            </td>
+                            <td className="max-w-xs truncate px-4 py-3 text-[var(--seo-text-light)]">
+                              {top || <span className="text-[var(--seo-success)]">No issues</span>}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <span className="text-sm font-medium text-[var(--seo-accent)]">View →</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </Card>
+          );
+        })}
+      </div>
     </div>
   );
 }

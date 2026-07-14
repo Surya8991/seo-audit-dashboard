@@ -22,18 +22,14 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: "/", icon: "📊", label: "Dashboard Overview" },
       { href: "/technical-audit", icon: "🚀", label: "Technical Audit" },
-      { href: "/results", icon: "📋", label: "Audit Results" },
-      { href: "/detail", icon: "🔎", label: "URL Detail" },
-      { href: "/links", icon: "🔗", label: "Link Analysis" },
-      { href: "/performance", icon: "⚡", label: "Performance Audit" },
+      // Results is the single per-URL section: the list lives at /results and
+      // the drill-down (with Links / Headings / Performance tabs) at /detail.
+      { href: "/results", icon: "📋", label: "Results" },
     ],
   },
   {
     title: "Additional Tools",
-    items: [
-      { href: "/headings", icon: "📝", label: "Heading Analysis" },
-      { href: "/export", icon: "📤", label: "Export Reports" },
-    ],
+    items: [{ href: "/export", icon: "📤", label: "Export Reports" }],
   },
   {
     items: [{ href: "/settings", icon: "⚙️", label: "Settings" }],
@@ -42,6 +38,12 @@ const NAV_SECTIONS: NavSection[] = [
 
 // Flat list of all nav hrefs, used by the mobile top bar to label the active page.
 const ALL_NAV_ITEMS: NavItem[] = NAV_SECTIONS.flatMap((s) => s.items);
+
+// The detail drill-down (/detail) belongs to the Results section; highlight
+// "Results" and label the mobile bar accordingly while on it.
+function resolveActiveHref(pathname: string): string {
+  return pathname === "/detail" ? "/results" : pathname;
+}
 
 const COLLAPSE_KEY = "seo-audit-nav-collapsed";
 
@@ -54,7 +56,7 @@ function NavItemLink({
   pathname: string;
   onNavigate?: () => void;
 }) {
-  const active = pathname === item.href;
+  const active = resolveActiveHref(pathname) === item.href;
   return (
     <Link
       href={item.href}
@@ -137,7 +139,7 @@ function NavLinks({ pathname, onNavigate }: { pathname: string; onNavigate?: () 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const activeItem = ALL_NAV_ITEMS.find((item) => item.href === pathname);
+  const activeItem = ALL_NAV_ITEMS.find((item) => item.href === resolveActiveHref(pathname));
   const { storageWarning } = useAudit();
 
   return (

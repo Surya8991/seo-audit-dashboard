@@ -1,8 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
-import { useAudit } from "@/lib/state/AuditContext";
-import { Card, EmptyState, MetricCard, PageHeader } from "@/components/ui";
+import { Card, MetricCard } from "@/components/ui";
 import { downloadCsv } from "@/lib/format";
 import {
   anchorTextDistribution,
@@ -21,6 +20,7 @@ import {
   type LinkEntry,
   type SpecialLinkEntry,
 } from "@/lib/linkAnalysis";
+import type { AuditResult } from "@/lib/types";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
 const TABS = ["Overview", "Links", "Special Links", "Anchor Text", "Opportunities"] as const;
@@ -50,8 +50,8 @@ interface LinkFilterPreset {
   type?: TypeFilter;
 }
 
-export default function LinkAnalysisPage() {
-  const { results } = useAudit();
+export function LinksView({ result }: { result: AuditResult }) {
+  const results = useMemo(() => [result], [result]);
   const [tab, setTab] = useState<Tab>("Overview");
   const [linkFilter, setLinkFilter] = useState<LinkFilterPreset>({});
 
@@ -73,15 +73,6 @@ export default function LinkAnalysisPage() {
   const gaps = useMemo(() => securityGaps(allLinks), [allLinks]);
   const summary = useMemo(() => buildExecutiveSummary(allLinks, orphan.length), [allLinks, orphan.length]);
   const homepageUrl = results[0]?.url;
-
-  if (results.length === 0) {
-    return (
-      <div>
-        <PageHeader title="🔗 Link Analysis" />
-        <EmptyState title="No audits yet" hint="Run an audit to see link analysis." />
-      </div>
-    );
-  }
 
   const brokenInternal = internal.filter((l) => l.is_broken).length;
   const brokenExternal = external.filter((l) => l.is_broken).length;
@@ -106,11 +97,6 @@ export default function LinkAnalysisPage() {
 
   return (
     <div>
-      <PageHeader
-        title="🔗 Link Analysis"
-        subtitle={`Across ${results.length} audited URL(s) · ${allLinks.length} links · ${specialLinks.length} special links (mailto/tel/anchor/js)`}
-      />
-
       <div className="mb-4 flex flex-wrap gap-1 border-b border-[var(--seo-border)]">
         {TABS.map((t) => (
           <button
