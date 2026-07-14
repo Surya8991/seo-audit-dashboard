@@ -237,8 +237,6 @@ export default function TechnicalAuditPage() {
         subtitle="Run a technical SEO audit on a single URL, an entire sitemap, a crawl, or a list of URLs."
       />
 
-      <ChecklistExplainer />
-
       {/* Mode selector */}
       <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4">
         {MODES.map((m) => (
@@ -484,6 +482,8 @@ export default function TechnicalAuditPage() {
           )}
         </form>
       </Card>
+
+      <ChecklistExplainer />
 
       {/* Progress */}
       {phase === "resolving" ? (
