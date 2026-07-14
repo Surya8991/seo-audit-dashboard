@@ -1,6 +1,6 @@
 # PROJECT_LOG - SEO Technical Audit Dashboard
 
-> **Last updated:** 2026-07-14 · **Session:** 7 · **Version:** v0.6.0 (pre-release)
+> **Last updated:** 2026-07-14 · **Session:** 8 · **Version:** v0.7.0 (pre-release)
 > Master log, read in full before touching code. Mirrors the format of the
 > SEO Suite project's `PROJECT_LOG.md` (60-second resume, Do NOT, Current
 > State, Phases, Session History).
@@ -245,6 +245,71 @@ introduced was found and fixed before commit.
   from N× to 1× per domain, a major latency + politeness win on a 2,461-URL
   site. Checklist merges the shared site_health block per result for display.
 
+### PHASE 3 - Auditing sites with 200+ URLs  ⏳ PLANNED, NEEDS A DECISION
+
+**Why the 200-URL cap exists today:** `MAX_URL_CAP` in `modules/sitemap_extractor.py`
+and `api/crawl.py` (200) isn't a hard technical limit, it's a judgment call
+matched to the current **client-orchestrated** design: the browser
+(`lib/crawl/orchestrator.ts`) fans out single-URL `/api/audit` calls at
+bounded concurrency (5 default/10 max) and the tab must stay open and
+connected for the whole run. At ~2-5s per audit and concurrency 5, 200 URLs
+takes roughly 1.5-4 minutes of the user actively keeping the tab open with a
+stable connection. That's reasonable for 200; it stops being reasonable at
+1,000+ (10-30+ minutes, one dropped connection loses the whole in-flight
+batch, no resume). IndexedDB storage itself is not the constraint: a
+synthetic 200-result, ~28MB payload saved and loaded without issue in
+testing (see Session 8 verification below), IndexedDB's quota is a share of
+free disk space, far larger than localStorage's ~5-10MB.
+
+**Options evaluated:**
+
+1. **Just raise the cap** (e.g. 200 → 1000). Zero new code, but doesn't fix
+   the underlying problem, it just moves the "tab must stay open 30+ minutes
+   with no resume" pain to a bigger number. Fine as a cheap stopgap, not a
+   real fix.
+2. **Chunked/multiple runs** (client-side). Auto-split a large URL list into
+   sequential batches (e.g. 200 at a time), surfacing a "Batch 2 of 5, continue?"
+   prompt between chunks. No backend changes, works within today's
+   architecture, and each chunk still respects the 60s/invocation Vercel cap.
+   Doesn't require the tab to run unattended, but doesn't provide
+   true "start it and walk away" either, the user still has to be present to
+   advance each chunk (though this could be automated with a client-side
+   timer that just keeps calling the next chunk without user interaction, as
+   long as the tab stays open).
+3. **PR #1's SQLite job-queue** (`modules/job_store.py`,
+   `api/crawl/{start,step,status}.py`). Poll-driven, resumable, and each
+   `step` call is bounded so it never risks the 60s cap by itself. **BUT**:
+   `SQLiteJobStore`'s own docstring says on-disk SQLite is NOT guaranteed to
+   survive between calls on Vercel's ephemeral serverless containers, it's
+   explicitly built as a swappable interface with a real Postgres store as
+   the intended production backend, and that Postgres implementation was
+   never written in the PR. As-is, this architecture would NOT reliably work
+   in production on Vercel; it needs a real hosted database (e.g. Neon or
+   Supabase free tier via `DATABASE_URL`) to actually deliver on its
+   resumable/background promise.
+4. **GitHub Actions as a fully decoupled batch runner.** A
+   `workflow_dispatch`-triggered Action (inputs: sitemap/seed URL, limit)
+   runs a Python script that reuses `modules/auditor.py`/`sitemap_extractor.py`/
+   `crawler.py` directly (no Vercel timeout at all, GitHub-hosted runners get
+   up to 6 hours), writes the aggregated result as a JSON artifact (or
+   commits it to a `reports/` location, or uploads to a GitHub Release).
+   Genuinely solves "browser doesn't need to stay open" and "no timeout,"
+   at the cost of a less-integrated UX: the user triggers the run outside
+   the app (GitHub UI or `gh workflow run`), waits for it to finish, then
+   imports the resulting JSON into the dashboard (would need a new "Import
+   results" feature, not just an export one). Good fit for scheduled/
+   recurring full-site audits; a poor fit for "audit this URL right now and
+   watch it happen" style tasks.
+
+**Recommendation:** short-term, option 2 (chunked runs) is the best
+value, it needs no new infrastructure, no new dependency, and directly
+extends the orchestrator already built and tested. Long-term, if truly
+unattended/background large-site audits become a real need, option 3
+(finish PR #1's design with a real Postgres store) is the more integrated
+answer and option 4 (GitHub Actions) is the better fit for scheduled batch
+reporting. Not implementing any of this until the user picks a direction,
+this is a real architecture decision, not a mechanical fix.
+
 ### PHASE C (trimmed) - API integrations  ⏳ MOSTLY N/A
 User directive: "add only what's needed for THIS tool." A technical audit is
 **no-API by definition** (SEO Suite's own tagline: "35 checks, no API key
@@ -297,3 +362,4 @@ explicitly unpaused.
 | 5 | 2026-07-14 | v0.4.0 | Made "Additional Tools" nav section collapsible (persisted, auto-expands on active route). **Phase 1g: Crawl-from-URL.** User pointed at unmerged remote branch `origin/venkataramana-work` (fetched, not deleted), which contained a well-tested BFS `modules/crawler.py` (`CrawlConfig`/`crawl_site`, seed selection, scope control, UA presets, 3 robots.txt modes) + `tests/test_crawler.py` + a small `prefetched` param on `audit_url()`. Adopted the crawler module as-is (11/11 tests pass unmodified); adapted the API boundary to our client-orchestrated model: `api/crawl.py` always runs discovery-only (`run_full_audit=False`), never the branch's synchronous per-page-audit mode, to stay under the 60s cap. Added as 4th Technical Audit input mode. New/live tests added and passing (44 pytest total, 3 opt-in skipped, 11 vitest). Verified end-to-end via mocked-fetch in-browser walkthrough. Branch also has a `phases.md` roadmap (async job queue, JS rendering, site scoring, dedicated crawl UI) for future phases, not built yet. |
 | 6 | 2026-07-14 | v0.5.0 | **Phase 1h: Help dialogs + check-selection UI.** User shared a screenshot of the reference tool's "Technical SEO" use-case explainer and asked for plain-English help dialogs plus a check-selection UI (default all on). Added `lib/checklistDefs.ts` (frontend mirror of the 35 check ids/labels/groups + one-sentence descriptions, guarded by a new test), `components/HelpDialog.tsx` (reusable popover), `components/ChecklistExplainer.tsx` (the "What Technical SEO checks" card with all 35 pills + "when to use", rendered below the audit form and collapsed by default), and `lib/useSelectedChecks.ts` + `components/CheckSelector.tsx` (a "Customize checks (N/35 selected)" panel, all on by default, persisted to localStorage). Help dialogs added to each of the 4 input-mode cards and each of the 3 checklist groups on the detail page; the detail page's Technical Audit tab now filters displayed checks by the user's selection (explicitly a display filter: the backend still computes all 35 checks every audit, since they're free once the page is fetched). 15 vitest + 44 pytest green; one real lint issue (unescaped apostrophes) found and fixed. Verified end-to-end in-browser via mocked state (explainer render, help popover open/close, check deselection + persistence, detail-page filtering with an accurate hidden-count message). |
 | 7 | 2026-07-14 | v0.6.0 | **UI polish, reporting gap fix, docs accuracy, and a full em-dash removal.** Moved `ChecklistExplainer` below the audit form (matching the user's screenshot) and collapsed it by default. Discovered PR #1 (`venkataramana-d`, still open) implements the FULL `venkataramana-work` roadmap (SQLite job queue, Playwright JS rendering, site scoring, a separate `/crawl` UI), overlapping/conflicting with the simpler discovery-only `api/crawl.py` already shipped; user decided to leave PR #1 untouched for now (not merged, not closed). Fixed 4 hardcoded `bg-white` inputs/selects (settings, performance, headings, detail pages) that broke dark mode, plus themed the dashboard's Recharts tooltips (`contentStyle`/`labelStyle` with CSS variables instead of Recharts' white default). Dispatched 5 parallel agents across 2 rounds for non-overlapping file sets: (1) UI content quality + em-dash removal across `app/`/`components/` except export, (2) reporting/export improvements, closing a real gap where the 35-check checklist was completely absent from CSV/Excel/PDF exports (now a checklist column/sheet/summary line in every format, `tests/test_report_generator.py` added), (3) `agents.md`/`PROJECT_LOG.md` accuracy audit (found and fixed a stale "Current State" section from Session 3/4), (4) em-dash sweep for the remaining Python modules/tests, (5) em-dash sweep for remaining `lib/*.ts` files + README. Total: 164 additional em-dashes removed across the whole codebase (zero remain anywhere in `app/`, `components/`, `lib/`, `modules/`, `api/`, `tests/`, or `*.md`). Final verification: 51 pytest passed (3 opt-in live skipped), 15 vitest passed, `tsc --noEmit` clean, lint at the exact pre-existing 27-error baseline (no new errors), secret scan clean across all 51 changed/new files. |
+| 8 | 2026-07-14 | v0.7.0 | **Critical fix: localStorage QuotaExceededError.** Every state change was writing the WHOLE results array as one JSON blob to localStorage (~5-10MB quota); a 200-URL bulk audit routinely exceeded it and crashed. Root-caused and fixed by migrating persistence to IndexedDB (`lib/state/idbStore.ts`, a minimal raw wrapper, no new dependency), with one-time migration of existing localStorage data and a defensive prune-to-500-most-recent fallback plus a user-visible warning banner if a save ever still fails. Verified with a synthetic 200-result, ~28MB payload saved and loaded successfully through the real `AuditContext` (would have crashed instantly under the old localStorage path). Extracted the sidebar's dark-mode logic into a shared `lib/useTheme.ts` hook (pub-sub so multiple mounted toggles stay in sync) and added a second toggle on the Settings page ("Appearance" card), per the user's choice to keep dark mode with an explicit Settings control rather than removing it. Changed the font from Inter to Arial (`--font-sans`, dropped the Google Fonts import). Researched and wrote a Phase 3 plan (`PROJECT_LOG.md`) for auditing 200+ URL sites: confirmed PR #1's SQLite job-queue does NOT reliably persist on Vercel's ephemeral containers by its own docstring (needs a real Postgres store, never built in that PR), and laid out 4 options (raise the cap, chunked runs, finish PR #1 with Postgres, GitHub Actions batch runner) with a recommendation (chunked runs short-term); no implementation yet, pending user direction. |

@@ -14,7 +14,9 @@ prior standalone Streamlit SEO audit tool ported in on top.
   `api/` (Vercel Python runtime convention: each file exports a `handler`
   class), no framework
 - No database: all audit results are computed on-demand per request and
-  persisted client-side only (localStorage via `lib/state/AuditContext.tsx`)
+  persisted client-side only (IndexedDB via `lib/state/AuditContext.tsx` +
+  `lib/state/idbStore.ts`; see the gotcha below on why it's IndexedDB and not
+  localStorage)
 
 ## Key directories/files
 - `app/`: Next.js pages: dashboard (`/`), **`technical-audit`** (single URL,
@@ -89,8 +91,14 @@ prior standalone Streamlit SEO audit tool ported in on top.
   comment in `lib/aggregate.ts`, to avoid round-tripping to the Python API
   just to group/sort already-computed issues)
 - `lib/state/AuditContext.tsx`: client-side persisted state (results, Groq API
-  key). `addResults(results[])` batches N results into one state update/one
-  localStorage write; use this for bulk audits, not a loop of `addResult`.
+  key), backed by `lib/state/idbStore.ts` (IndexedDB, see gotcha below).
+  `addResults(results[])` batches N results into one state update/one
+  persisted write; use this for bulk audits, not a loop of `addResult`.
+  Exposes `storageWarning` (shown as a banner in `AppShell.tsx`) for the rare
+  case a save still fails.
+- `lib/useTheme.ts`: shared light/dark toggle logic (pub-sub so multiple
+  mounted toggles, e.g. the sidebar `ThemeToggle` and the Settings page's
+  Appearance card, stay in sync live without a reload).
 - `lib/crawl/parseUrlList.ts`: client-side CSV/TSV/paste URL-list parser (no
   upload, no server storage). Detects a url/link header column or scrapes any
   http(s) cell.
@@ -159,6 +167,19 @@ sys.path shim. Live tests (`test_live_edstellar_sitemap`,
 Edstellar sitemap/pages and take 30+ seconds. Opt in with `RUN_LIVE_TESTS=1`.
 
 ## Agent notes / gotchas
+- **Persistence is IndexedDB, not localStorage** (`lib/state/idbStore.ts`,
+  used by `AuditContext.tsx`). It used to be localStorage, but every state
+  change serializes the WHOLE `results` array as one blob, and a bulk audit
+  of ~200 URLs (each a full `audit_url()` result, 50-200KB) routinely blew
+  past localStorage's ~5-10MB per-origin quota and threw
+  `QuotaExceededError`, crashing the app. Don't add a second localStorage
+  write path for audit results; `AuditContext` migrates any legacy
+  localStorage data on first load, then removes it. If you ever see the
+  quota error again, it means something is bypassing `AuditContext`.
+- Don't build a second dark-mode toggle from scratch. `lib/useTheme.ts` is
+  the single source of truth (pub-sub so every mounted toggle stays in sync
+  live); both `components/ThemeToggle.tsx` (sidebar) and the Settings page's
+  Appearance card use it.
 - Every check module returns `{..., "issues": [...]}` where each issue is
   `{issue, category, severity, recommendation, impact_score, effort}`; follow
   this convention for any new check so it aggregates into `all_issues` and

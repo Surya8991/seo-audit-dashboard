@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { useAudit } from "@/lib/state/AuditContext";
 
 interface NavItem {
   href: string;
@@ -137,6 +138,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const activeItem = ALL_NAV_ITEMS.find((item) => item.href === pathname);
+  const { storageWarning } = useAudit();
 
   return (
     <div className="flex min-h-screen">
@@ -198,7 +200,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             {activeItem ? `${activeItem.icon} ${activeItem.label}` : "SEO Audit"}
           </span>
         </header>
-        <main className="flex-1 px-4 py-6 md:px-8">{children}</main>
+        <main className="flex-1 px-4 py-6 md:px-8">
+          {storageWarning ? (
+            <div className="mb-4 rounded-lg border border-[var(--seo-warning-border)] bg-[var(--seo-warning-bg)] px-3 py-2 text-sm text-[var(--seo-warning)]">
+              {storageWarning}
+            </div>
+          ) : null}
+          {children}
+        </main>
       </div>
     </div>
   );

@@ -9,8 +9,18 @@ import {
   type ReactNode,
 } from "react";
 import type { AuditResult, NavFilter } from "@/lib/types";
+import { idbGet, idbSet } from "@/lib/state/idbStore";
 
 const STORAGE_KEY = "seo-audit-dashboard-state-v1";
+// A bulk audit's results routinely exceed localStorage's ~5-10MB per-origin
+// quota (each full audit_url() result can be 50-200KB; 200 URLs adds up
+// fast). IndexedDB's quota is a share of free disk space, comfortably larger.
+// Legacy localStorage data is migrated in once, then removed.
+const LEGACY_LOCALSTORAGE_KEY = STORAGE_KEY;
+// Hard ceiling if a save still fails somehow (e.g. IndexedDB unavailable,
+// disk genuinely full): keep only the most recent N results rather than
+// losing everything or crashing the app.
+const MAX_STORED_RESULTS = 500;
 
 interface PersistedState {
   results: AuditResult[];
@@ -24,6 +34,7 @@ interface AuditContextValue {
   selectedUrlIndex: number;
   navFilter: NavFilter | null;
   groqApiKey: string;
+  storageWarning: string | null;
   addResult: (result: AuditResult) => void;
   addResults: (results: AuditResult[]) => void;
   setSelectedUrlIndex: (index: number) => void;
@@ -34,20 +45,36 @@ interface AuditContextValue {
 
 const AuditContext = createContext<AuditContextValue | null>(null);
 
-function loadPersisted(): PersistedState {
-  if (typeof window === "undefined") return { results: [], lastAuditDate: null, groqApiKey: "" };
+function normalizePersisted(parsed: unknown): PersistedState {
+  const p = (parsed ?? {}) as Partial<PersistedState>;
+  return {
+    results: Array.isArray(p.results) ? p.results : [],
+    lastAuditDate: p.lastAuditDate ?? null,
+    groqApiKey: typeof p.groqApiKey === "string" ? p.groqApiKey : "",
+  };
+}
+
+async function loadPersisted(): Promise<PersistedState> {
+  if (typeof window === "undefined") return normalizePersisted(null);
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { results: [], lastAuditDate: null, groqApiKey: "" };
-    const parsed = JSON.parse(raw);
-    return {
-      results: Array.isArray(parsed.results) ? parsed.results : [],
-      lastAuditDate: parsed.lastAuditDate ?? null,
-      groqApiKey: typeof parsed.groqApiKey === "string" ? parsed.groqApiKey : "",
-    };
+    const fromIdb = await idbGet<PersistedState>(STORAGE_KEY);
+    if (fromIdb) return normalizePersisted(fromIdb);
   } catch {
-    return { results: [], lastAuditDate: null, groqApiKey: "" };
+    /* IndexedDB unavailable (e.g. some private-browsing modes); fall through */
   }
+  // One-time migration from the old localStorage-backed version.
+  try {
+    const raw = window.localStorage.getItem(LEGACY_LOCALSTORAGE_KEY);
+    if (raw) {
+      const migrated = normalizePersisted(JSON.parse(raw));
+      window.localStorage.removeItem(LEGACY_LOCALSTORAGE_KEY);
+      idbSet(STORAGE_KEY, migrated).catch(() => {});
+      return migrated;
+    }
+  } catch {
+    /* ignore malformed legacy data */
+  }
+  return normalizePersisted(null);
 }
 
 export function AuditProvider({ children }: { children: ReactNode }) {
@@ -57,19 +84,43 @@ export function AuditProvider({ children }: { children: ReactNode }) {
   const [navFilter, setNavFilter] = useState<NavFilter | null>(null);
   const [groqApiKey, setGroqApiKey] = useState("");
   const [hydrated, setHydrated] = useState(false);
+  const [storageWarning, setStorageWarning] = useState<string | null>(null);
 
   useEffect(() => {
-    const persisted = loadPersisted();
-    setResults(persisted.results);
-    setLastAuditDate(persisted.lastAuditDate);
-    setGroqApiKey(persisted.groqApiKey);
-    setHydrated(true);
+    let cancelled = false;
+    loadPersisted().then((persisted) => {
+      if (cancelled) return;
+      setResults(persisted.results);
+      setLastAuditDate(persisted.lastAuditDate);
+      setGroqApiKey(persisted.groqApiKey);
+      setHydrated(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     if (!hydrated || typeof window === "undefined") return;
     const payload: PersistedState = { results, lastAuditDate, groqApiKey };
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    idbSet(STORAGE_KEY, payload)
+      .then(() => setStorageWarning(null))
+      .catch(async () => {
+        // Extremely unlikely with IndexedDB's much larger quota, but stay
+        // resilient: prune to the most recent results and retry once rather
+        // than crashing or silently losing everything.
+        if (results.length > MAX_STORED_RESULTS) return; // already capped, nothing more to try
+        const pruned = results.slice(0, MAX_STORED_RESULTS);
+        try {
+          await idbSet(STORAGE_KEY, { ...payload, results: pruned });
+          setResults(pruned);
+          setStorageWarning(
+            `Storage limit reached. Kept the most recent ${MAX_STORED_RESULTS} results and dropped older ones.`,
+          );
+        } catch {
+          setStorageWarning("Could not save audit results to browser storage. Recent results may not persist.");
+        }
+      });
   }, [results, lastAuditDate, groqApiKey, hydrated]);
 
   const value = useMemo<AuditContextValue>(
@@ -79,6 +130,7 @@ export function AuditProvider({ children }: { children: ReactNode }) {
       selectedUrlIndex,
       navFilter,
       groqApiKey,
+      storageWarning,
       addResult: (result) => {
         setResults((prev) => {
           const existingIdx = prev.findIndex((r) => r.url === result.url);
@@ -121,7 +173,7 @@ export function AuditProvider({ children }: { children: ReactNode }) {
         setNavFilter(null);
       },
     }),
-    [results, lastAuditDate, selectedUrlIndex, navFilter, groqApiKey],
+    [results, lastAuditDate, selectedUrlIndex, navFilter, groqApiKey, storageWarning],
   );
 
   return <AuditContext.Provider value={value}>{children}</AuditContext.Provider>;

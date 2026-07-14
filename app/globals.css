@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -140,7 +139,7 @@
   --color-sev-low: var(--sev-low);
   --color-sev-low-bg: var(--sev-low-bg);
 
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-sans: Arial, Helvetica, 'Segoe UI', sans-serif;
 }
 
 body {

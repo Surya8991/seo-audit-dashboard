@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { useAudit } from "@/lib/state/AuditContext";
 import { Card, PageHeader } from "@/components/ui";
+import { useTheme } from "@/lib/useTheme";
 
 export default function SettingsPage() {
   const { results, clearAll, groqApiKey, setGroqApiKey } = useAudit();
+  const { dark, setDark } = useTheme();
   const [psiConfigured, setPsiConfigured] = useState<boolean | null>(null);
   const [groqConfigured, setGroqConfigured] = useState<boolean | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -26,6 +28,34 @@ export default function SettingsPage() {
   return (
     <div className="max-w-2xl">
       <PageHeader title="⚙️ Settings" />
+
+      <Card className="mb-4">
+        <h3 className="mb-2 text-sm font-semibold text-[var(--seo-subheading)]">
+          Appearance
+        </h3>
+        <p className="mb-3 text-sm text-[var(--seo-text-light)]">
+          Switch between light and dark mode. This also toggles the small icon at the
+          bottom of the sidebar, they stay in sync.
+        </p>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={dark}
+            onClick={() => setDark(!dark)}
+            className="relative h-6 w-11 shrink-0 rounded-full transition-colors"
+            style={{ backgroundColor: dark ? "var(--seo-accent)" : "var(--seo-border-strong)" }}
+          >
+            <span
+              className="absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform"
+              style={{ transform: dark ? "translateX(22px)" : "translateX(2px)" }}
+            />
+          </button>
+          <span className="text-sm text-[var(--seo-text)]">
+            {dark ? "Dark mode" : "Light mode"}
+          </span>
+        </div>
+      </Card>
 
       <Card className="mb-4">
         <h3 className="mb-2 text-sm font-semibold text-[var(--seo-subheading)]">
@@ -89,7 +119,7 @@ export default function SettingsPage() {
           className="w-full rounded-lg border border-[var(--seo-border-strong)] bg-[var(--seo-card-bg)] px-3 py-2 text-sm text-[var(--seo-text)] outline-none focus:border-[var(--seo-accent)]"
         />
         <p className="mt-2 text-xs text-[var(--seo-muted)]">
-          Stored only in this browser&apos;s localStorage and sent directly to the audit
+          Stored only in this browser&apos;s IndexedDB and sent directly to the audit
           summary endpoint, never saved server-side.
         </p>
       </Card>
@@ -99,7 +129,7 @@ export default function SettingsPage() {
           Session Data
         </h3>
         <p className="mb-3 text-sm text-[var(--seo-text-light)]">
-          {results.length} audit result(s) stored in this browser (localStorage).
+          {results.length} audit result(s) stored in this browser (IndexedDB).
         </p>
         <button
           type="button"

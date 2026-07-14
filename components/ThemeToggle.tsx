@@ -1,29 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useTheme } from "@/lib/useTheme";
 
-const STORAGE_KEY = "seo-audit-theme";
-
-function applyTheme(dark: boolean) {
-  document.documentElement.classList.toggle("dark", dark);
-}
+export { themeInitScript } from "@/lib/useTheme";
 
 export function ThemeToggle() {
-  const [dark, setDark] = useState(false);
-
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    const initial = stored ? stored === "dark" : document.documentElement.classList.contains("dark");
-    setDark(initial);
-    applyTheme(initial);
-  }, []);
-
-  function toggle() {
-    const next = !dark;
-    setDark(next);
-    applyTheme(next);
-    localStorage.setItem(STORAGE_KEY, next ? "dark" : "light");
-  }
+  const { dark, toggle } = useTheme();
 
   return (
     <button
@@ -37,14 +19,3 @@ export function ThemeToggle() {
     </button>
   );
 }
-
-/** Inline script for app/layout.tsx <head>, sets .dark before hydration to avoid a flash of the wrong theme. */
-export const themeInitScript = `
-(function () {
-  try {
-    var stored = localStorage.getItem('${STORAGE_KEY}');
-    var dark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
-    if (dark) document.documentElement.classList.add('dark');
-  } catch (e) {}
-})();
-`;
