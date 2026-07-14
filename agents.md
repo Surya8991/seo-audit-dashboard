@@ -195,14 +195,14 @@ Edstellar sitemap/pages and take 30+ seconds. Opt in with `RUN_LIVE_TESTS=1`.
   `crawler._fetch_sitemap_locs`) call `validate_audit_url` first. Redirect
   targets in `technical_checks.py` cross-host followers are NOT yet
   re-validated (they always start from the already-validated audit domain, so
-  lower risk — see PROJECT_LOG Session 10 residuals). Covered by
+  lower risk; see PROJECT_LOG Session 10 residuals). Covered by
   `tests/test_ssrf.py`.
 - **`all_issues` aggregation excludes the legacy `headings` and `images`
   blocks** (`auditor.py`): `heading_detail`/`image_detail` are the thorough
   versions scoring uses, and including both would double-count. If you add a
   new check module, add its key to that aggregation list AND make sure its
   issue `category` is mapped in `scoring.py`/`aggregate.ts` `THEMES` (an
-  unmapped category silently lands in the "Other" bucket — that's how the
+  unmapped category silently lands in the "Other" bucket, which is how the
   "Image SEO" issues were getting lost).
 - `lib/crawl/chunkedRunner.ts::runChunked`'s optional `resumeFrom` param
   (`{succeeded, failed, startedAt}`) exists because a prior version reset
