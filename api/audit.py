@@ -39,6 +39,12 @@ class handler(BaseHTTPRequestHandler):
             validate_links = bool(payload.get("validateLinks", False))
             fetch_pagespeed = bool(payload.get("fetchPagespeed", False))
             psi_api_key = payload.get("psiApiKey") or os.environ.get("PSI_API_KEY")
+            # Optional: domain-level site-health computed once by the client
+            # (via /api/site-health) and reused, so a same-domain crawl skips
+            # re-running WHOIS/DNS/SSL/robots/etc. per page.
+            prefetched_domain_health = payload.get("prefetchedDomainHealth")
+            if not isinstance(prefetched_domain_health, dict):
+                prefetched_domain_health = None
 
             result = audit_url(
                 url,
@@ -47,6 +53,7 @@ class handler(BaseHTTPRequestHandler):
                 validate_links=validate_links,
                 fetch_pagespeed=fetch_pagespeed,
                 psi_api_key=psi_api_key,
+                prefetched_domain_health=prefetched_domain_health,
             )
             result.pop("_soup_text", None)
             _send_json(self, 200, result)

@@ -3,6 +3,7 @@
     "api/audit.py": { "maxDuration": 60 },
     "api/sitemap.py": { "maxDuration": 60 },
     "api/crawl.py": { "maxDuration": 60 },
+    "api/site-health.py": { "maxDuration": 30 },
     "api/pagespeed.py": { "maxDuration": 90 },
     "api/export.py": { "maxDuration": 30 },
     "api/config-status.py": { "maxDuration": 10 },

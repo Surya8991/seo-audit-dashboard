@@ -15,6 +15,7 @@ import {
   type ChunkedJobCheckpoint,
   type ChunkedProgress,
 } from "@/lib/crawl/chunkedRunner";
+import { fetchDomainHealth } from "@/lib/crawl/siteHealthCache";
 import { ChecklistExplainer } from "@/components/ChecklistExplainer";
 import { HelpDialog } from "@/components/HelpDialog";
 import { CheckSelector } from "@/components/CheckSelector";
@@ -276,11 +277,26 @@ export default function TechnicalAuditPage() {
 
     const controller = new AbortController();
     abortRef.current = controller;
+
+    // Phase 2: fetch each domain's site-health once up front so the per-URL
+    // audits skip re-running WHOIS/DNS/SSL/robots for every page on the domain.
+    setPhase("resolving");
+    const domainHealth = await fetchDomainHealth(urls, controller.signal);
+    if (controller.signal.aborted) {
+      abortRef.current = null;
+      setPhase("idle");
+      return;
+    }
+
     setPhase("crawling");
     const totalChunks = Math.max(1, Math.ceil(urls.length / CHUNK_SIZE));
     setProgress({ total: urls.length, completed: 0, succeeded: 0, failed: 0, inFlight: 0, lastUrl: "", currentChunk: 1, totalChunks });
 
-    await runChunkedAndPersist(urls, urls, { auditType, checkLinks, fetchPagespeed, concurrency }, bulkLabel(), controller);
+    await runChunkedAndPersist(
+      urls, urls,
+      { auditType, checkLinks, fetchPagespeed, concurrency, domainHealth },
+      bulkLabel(), controller,
+    );
   }
 
   function cancel() {
@@ -590,7 +606,7 @@ export default function TechnicalAuditPage() {
       {/* Progress */}
       {phase === "resolving" ? (
         <Card className="mt-4">
-          <p className="text-sm text-[var(--seo-text)]">Reading sitemap…</p>
+          <p className="text-sm text-[var(--seo-text)]">Preparing audit (resolving URLs and site health)…</p>
         </Card>
       ) : null}
 

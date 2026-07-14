@@ -7,6 +7,7 @@
 // the 60s function cap.
 
 import type { AuditResult } from "@/lib/types";
+import { domainHealthFor, type DomainHealthMap } from "@/lib/crawl/siteHealthCache";
 
 export interface CrawlOptions {
   auditType?: "auto" | "course" | "blog" | "general";
@@ -15,6 +16,9 @@ export interface CrawlOptions {
   fetchPagespeed?: boolean;
   concurrency?: number; // default 5, clamped 1..10
   psiApiKey?: string;
+  // Phase 2: host -> domain-level site-health, prefetched once so each audit
+  // skips re-running WHOIS/DNS/SSL/robots/etc. for its domain.
+  domainHealth?: DomainHealthMap;
 }
 
 export interface CrawlProgress {
@@ -42,6 +46,7 @@ async function auditOne(url: string, opts: CrawlOptions, signal: AbortSignal): P
       validateLinks: opts.validateLinks ?? false,
       fetchPagespeed: opts.fetchPagespeed ?? false,
       psiApiKey: opts.psiApiKey || undefined,
+      prefetchedDomainHealth: domainHealthFor(opts.domainHealth, url) || undefined,
     }),
   });
   const data = await res.json();

@@ -567,8 +567,22 @@ def check_http2(url: str) -> dict:
 # Aggregate entry point: run every site-health check concurrently
 # ════════════════════════════════════════════════════════════════════════════
 
-def analyze_site_health(url: str, soup=None, http_headers=None, page_text: str = "") -> dict:
-    """Run all site-health checks concurrently and merge into one result dict."""
+# Which site-health checks are domain-level (identical for every page on a
+# domain, so they can be computed once and reused across a same-domain crawl)
+# vs. page-level (depend on the specific page's text/soup/headers).
+_DOMAIN_LEVEL_CHECKS = (
+    "robots", "sitemap", "domain_age", "ssl", "https_enforcement",
+    "dns", "www_redirect", "http2",
+)
+_PAGE_LEVEL_CHECKS = ("readability", "content_freshness", "canonical_loop")
+
+
+def analyze_domain_health(url: str) -> dict:
+    """Run only the domain-level site-health checks (robots, sitemap, WHOIS,
+    SSL, HTTPS enforcement, DNS, www-redirect, HTTP/2). These are identical for
+    every page on a domain, so a crawl can compute them once per domain and
+    reuse them (see api/site-health.py and the client-side cache) instead of
+    re-fetching WHOIS/DNS/SSL etc. for every page (Phase 2, PROJECT_LOG)."""
     with ThreadPoolExecutor(max_workers=8) as ex:
         futures = {
             "robots": ex.submit(check_robots_txt, url),
@@ -577,9 +591,6 @@ def analyze_site_health(url: str, soup=None, http_headers=None, page_text: str =
             "ssl": ex.submit(check_ssl, url),
             "https_enforcement": ex.submit(check_https_enforcement, url),
             "dns": ex.submit(check_dns_health, url),
-            "readability": ex.submit(check_readability, page_text),
-            "content_freshness": ex.submit(check_content_freshness, http_headers, soup),
-            "canonical_loop": ex.submit(check_canonical_loop, url, soup),
             "www_redirect": ex.submit(check_www_redirect, url),
             "http2": ex.submit(check_http2, url),
         }
@@ -588,12 +599,46 @@ def analyze_site_health(url: str, soup=None, http_headers=None, page_text: str =
             try:
                 results[key] = fut.result(timeout=25)
             except Exception as exc:
-                logger.warning("site_health check %s failed for %s: %s", key, url, exc)
+                logger.warning("domain_health check %s failed for %s: %s", key, url, exc)
                 results[key] = {"issues": []}
+    return results
+
+
+def _analyze_page_health(soup=None, http_headers=None, page_text: str = "", url: str = "") -> dict:
+    """The page-level site-health checks (readability, content freshness,
+    canonical loop) that must run per page even when domain health is reused."""
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        futures = {
+            "readability": ex.submit(check_readability, page_text),
+            "content_freshness": ex.submit(check_content_freshness, http_headers, soup),
+            "canonical_loop": ex.submit(check_canonical_loop, url, soup),
+        }
+        results = {}
+        for key, fut in futures.items():
+            try:
+                results[key] = fut.result(timeout=25)
+            except Exception as exc:
+                logger.warning("page_health check %s failed for %s: %s", key, url, exc)
+                results[key] = {"issues": []}
+    return results
+
+
+def analyze_site_health(url: str, soup=None, http_headers=None, page_text: str = "",
+                        prefetched_domain_health: dict | None = None) -> dict:
+    """Run all site-health checks and merge into one result dict.
+
+    If `prefetched_domain_health` is provided (the output of
+    `analyze_domain_health` for this URL's domain), the expensive domain-level
+    checks are reused instead of re-run, and only the page-level checks
+    execute. Otherwise all checks run (the single-URL path).
+    """
+    domain = prefetched_domain_health if prefetched_domain_health is not None else analyze_domain_health(url)
+    page = _analyze_page_health(soup=soup, http_headers=http_headers, page_text=page_text, url=url)
+    results = {**domain, **page}
 
     all_issues = []
-    for r in results.values():
-        all_issues.extend(r.get("issues", []))
+    for key in (*_DOMAIN_LEVEL_CHECKS, *_PAGE_LEVEL_CHECKS):
+        all_issues.extend(results.get(key, {}).get("issues", []))
 
     results["issues"] = all_issues
     return results

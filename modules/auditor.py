@@ -554,7 +554,8 @@ def detect_page_type(url, soup):
 
 
 def audit_url(url, audit_type="auto", check_links=True, validate_links=False,
-              fetch_pagespeed=False, psi_api_key=None, prefetched=None):
+              fetch_pagespeed=False, psi_api_key=None, prefetched=None,
+              prefetched_domain_health=None):
     # SSRF protection: block private/internal URLs before making any outbound request
     ok, ssrf_msg = validate_audit_url(url)
     if not ok:
@@ -687,7 +688,8 @@ def audit_url(url, audit_type="auto", check_links=True, validate_links=False,
     # redirect consistency, HTTP/2: run concurrently, independent of the page fetch above.
     from modules.technical_checks import analyze_site_health
     result["site_health"] = analyze_site_health(
-        url, soup=soup, http_headers=http_headers, page_text=result.get("_soup_text", "")
+        url, soup=soup, http_headers=http_headers, page_text=result.get("_soup_text", ""),
+        prefetched_domain_health=prefetched_domain_health,
     )
 
     if audit_type == "auto":
