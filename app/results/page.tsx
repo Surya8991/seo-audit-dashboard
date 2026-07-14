@@ -7,7 +7,6 @@ import { Card, EmptyState, PageHeader, ScoreBadge, ScoreCircle, StatusPill } fro
 import { ExportBar } from "@/components/ExportBar";
 import { allIssuesOf, avgScore } from "@/lib/aggregate";
 import { difficultyBreakdown } from "@/lib/difficulty";
-import { siteScore, gradeColor } from "@/lib/siteScore";
 import { severityColor } from "@/lib/format";
 import type { AuditResult } from "@/lib/types";
 import { Bar, BarChart, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -131,10 +130,6 @@ export default function ResultsPage() {
     };
   }, [results]);
 
-  // Ahrefs-style site health score + letter grade (% of pages free of any
-  // Critical/High issue). Ported from modules/site_scoring.py.
-  const site = useMemo(() => siteScore(results), [results]);
-
   if (results.length === 0) {
     return (
       <div>
@@ -155,32 +150,13 @@ export default function ResultsPage() {
           </h3>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-[auto_1fr]">
             <div className="flex items-center gap-6">
-              <ScoreCircle score={rollup.avg} size={88} label="Avg score (per-page quality)" />
-              <div
-                className="flex flex-col items-center gap-1"
-                title={`Site Health grade: ${site.cleanPages} of ${site.totalPages} pages have no Critical/High-severity issue. This is a different metric from the average score above: one bad page on an otherwise-clean site still pulls this grade down.`}
-              >
-                <div
-                  className="flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-full border-4"
-                  style={{ borderColor: gradeColor(site.grade) }}
-                >
-                  <span className="text-3xl font-bold leading-none" style={{ color: gradeColor(site.grade) }}>
-                    {site.grade}
-                  </span>
-                </div>
-                <span className="text-xs text-[var(--seo-muted)]">
-                  Site Health ({site.score}% clean)
-                </span>
-              </div>
+              <ScoreCircle score={rollup.avg} size={88} label="Avg score" />
               <div className="flex flex-col gap-1 text-sm">
                 <span className="text-[var(--seo-text-light)]">
                   <strong className="text-[var(--seo-heading)]">{results.length}</strong> URLs audited
                 </span>
                 <span className="text-[var(--seo-text-light)]">
                   <strong className="text-[var(--seo-heading)]">{rollup.totalIssues}</strong> total issues
-                </span>
-                <span className="text-[var(--seo-text-light)]">
-                  <strong className="text-[var(--seo-heading)]">{site.criticalPages}</strong> page{site.criticalPages === 1 ? "" : "s"} with critical/high issues
                 </span>
                 <span className="flex gap-3 text-xs">
                   <span style={{ color: "var(--seo-success)" }}>● {rollup.dist.good} good</span>
