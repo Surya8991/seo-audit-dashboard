@@ -117,9 +117,9 @@ def test_gzipped_sitemap(mock_get):
 @patch("modules.sitemap_extractor.requests.get")
 def test_max_url_cap_clamped(mock_get):
     mock_get.side_effect = _mock_get({"https://example.com/sitemap.xml": URLSET})
-    # Asking for 9999 must clamp to MAX_URL_CAP (200): here only 4 exist anyway,
-    # but the returned cap flag must reflect the clamped limit, not 9999.
-    result = extract_sitemap_urls("https://example.com/sitemap.xml", limit=9999)
+    # Asking for 99999 must clamp to MAX_URL_CAP: here only 4 URLs exist anyway,
+    # but the returned cap flag must reflect the clamped limit, not 99999.
+    result = extract_sitemap_urls("https://example.com/sitemap.xml", limit=99999)
     assert result["capped"] is False
     assert len(result["urls"]) == 4
 

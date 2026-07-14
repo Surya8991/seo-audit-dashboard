@@ -36,7 +36,7 @@ DEFAULT_URL_CAP = 50
 # Sitemap resolution is just an XML fetch/parse, cheap even at this size, so
 # it can go much higher than the audit-side chunk size (lib/crawl/chunkedRunner.ts's
 # CHUNK_SIZE=200): a large resolved list gets audited in chunks client-side.
-MAX_URL_CAP = 2000
+MAX_URL_CAP = 4000
 
 
 class SitemapError(Exception):

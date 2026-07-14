@@ -198,10 +198,11 @@ Flask process + daemon thread + SSE + on-disk checkpointing; the
 neither model ports here as-is):
 1. One of three URL-resolution steps runs first, each bounded and fast enough
    to fit in a single invocation: `api/sitemap.py` (sitemap/sitemap-index
-   fetch, cap 2000), `api/crawl.py` (BFS link discovery, `run_full_audit=False`,
-   cap 200; lower than sitemap's because discovery itself does a real
-   per-page fetch), or the client-side CSV/paste parser (no network call,
-   cap 2000).
+   fetch, cap 4000, `MAX_URL_CAP` in `modules/sitemap_extractor.py`),
+   `api/crawl.py` (BFS link discovery, `run_full_audit=False`, cap 200; lower
+   than sitemap's because discovery itself does a real per-page fetch), or
+   the client-side CSV/paste parser (no network call, cap 4000, `MAX_LIMIT`
+   in `app/technical-audit/page.tsx`).
 2. `lib/crawl/chunkedRunner.ts::runChunked` splits the resolved list into
    `CHUNK_SIZE=200` batches. Each batch goes through
    `lib/crawl/orchestrator.ts::runCrawl`, which fans out bounded-concurrency

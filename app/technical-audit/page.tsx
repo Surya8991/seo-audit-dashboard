@@ -28,7 +28,7 @@ const DEFAULT_LIMIT = 50;
 // CHUNK_SIZE-sized batches (lib/crawl/chunkedRunner.ts), resumable if
 // interrupted. Crawl mode's discovery step is a real per-page fetch, so it
 // stays capped lower, see CRAWL_MAX_LIMIT.
-const MAX_LIMIT = 2000;
+const MAX_LIMIT = 4000;
 const CRAWL_MAX_LIMIT = 200;
 
 const MODES: { id: InputMode; label: string; icon: string; hint: string; help: string }[] = [
@@ -315,7 +315,7 @@ export default function TechnicalAuditPage() {
     "w-full rounded-lg border border-[var(--seo-border-strong)] bg-[var(--seo-card-bg)] px-3 py-2 text-sm text-[var(--seo-text)] outline-none focus:border-[var(--seo-accent)]";
 
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-4xl">
       <PageHeader
         title="🚀 Technical Audit"
         subtitle="Run a technical SEO audit on a single URL, an entire sitemap, a crawl, or a list of URLs."
