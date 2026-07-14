@@ -153,17 +153,21 @@ export default function ResultsPage() {
           </h3>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-[auto_1fr]">
             <div className="flex items-center gap-6">
-              <ScoreCircle score={rollup.avg} size={88} label="Avg score" />
+              <ScoreCircle score={rollup.avg} size={88} label="Avg score (per-page quality)" />
               <div
-                className="flex h-[88px] w-[88px] shrink-0 flex-col items-center justify-center rounded-full border-4"
-                style={{ borderColor: gradeColor(site.grade) }}
-                title={`Site Health grade: ${site.cleanPages} of ${site.totalPages} pages have no Critical/High issues`}
+                className="flex flex-col items-center gap-1"
+                title={`Site Health grade: ${site.cleanPages} of ${site.totalPages} pages have no Critical/High-severity issue. This is a different metric from the average score above: one bad page on an otherwise-clean site still pulls this grade down.`}
               >
-                <span className="text-2xl font-bold leading-none" style={{ color: gradeColor(site.grade) }}>
-                  {site.grade}
-                </span>
-                <span className="mt-0.5 text-[0.65rem] font-medium text-[var(--seo-muted)]">
-                  {site.score}% healthy
+                <div
+                  className="flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-full border-4"
+                  style={{ borderColor: gradeColor(site.grade) }}
+                >
+                  <span className="text-3xl font-bold leading-none" style={{ color: gradeColor(site.grade) }}>
+                    {site.grade}
+                  </span>
+                </div>
+                <span className="text-xs text-[var(--seo-muted)]">
+                  Site Health ({site.score}% clean)
                 </span>
               </div>
               <div className="flex flex-col gap-1 text-sm">
