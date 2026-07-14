@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { useAudit } from "@/lib/state/AuditContext";
-import { Card, EmptyState, IssueRow, PageHeader, ScoreBadge } from "@/components/ui";
+import { Card, EmptyState, IssueRow, PageHeader, ScoreBadge, StatusPill } from "@/components/ui";
 import { getThematicIssues, getTopIssuesByImpact } from "@/lib/aggregate";
 import { WEIGHTS } from "@/lib/scoring";
+import type { ChecklistItem } from "@/lib/types";
 
 const TABS = [
   "Overview",
+  "Technical Audit",
   "Issues",
   "Links",
   "Content & Images",
@@ -15,6 +17,40 @@ const TABS = [
   "Recommendations",
 ] as const;
 type Tab = (typeof TABS)[number];
+
+const CHECKLIST_GROUP_LABELS: Record<string, string> = {
+  crawlability: "Crawlability",
+  on_page: "On-Page",
+  site_health: "Site Health",
+};
+
+function ChecklistGroupCard({ title, items }: { title: string; items: ChecklistItem[] }) {
+  return (
+    <Card>
+      <h3 className="mb-3 text-sm font-semibold text-[var(--seo-subheading)]">
+        {title} ({items.length})
+      </h3>
+      <div className="flex flex-col">
+        {items.map((item) => (
+          <div
+            key={item.id}
+            className="flex items-center justify-between gap-3 border-b border-[var(--seo-border)] py-2 last:border-0"
+          >
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium text-[var(--seo-subheading)]">
+                {item.label}
+              </div>
+              {item.detail ? (
+                <div className="truncate text-xs text-[var(--seo-muted)]">{item.detail}</div>
+              ) : null}
+            </div>
+            <StatusPill status={item.status} />
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
 
 function BoolBadge({ ok }: { ok: boolean }) {
   return (
@@ -252,6 +288,38 @@ export default function DetailPage() {
             ) : null}
           </Card>
         </div>
+      ) : null}
+
+      {tab === "Technical Audit" ? (
+        r.technical_audit_checklist ? (
+          <div className="flex flex-col gap-4">
+            <Card>
+              <div className="flex flex-wrap items-center gap-4 text-sm">
+                <span className="font-semibold text-[var(--seo-subheading)]">
+                  Technical SEO Audit — {r.technical_audit_checklist.summary.total} checks
+                </span>
+                <span className="flex items-center gap-1">
+                  <StatusPill status="pass" /> {r.technical_audit_checklist.summary.pass}
+                </span>
+                <span className="flex items-center gap-1">
+                  <StatusPill status="warning" /> {r.technical_audit_checklist.summary.warning}
+                </span>
+                <span className="flex items-center gap-1">
+                  <StatusPill status="fail" /> {r.technical_audit_checklist.summary.fail}
+                </span>
+              </div>
+            </Card>
+            {(["crawlability", "on_page", "site_health"] as const).map((group) => (
+              <ChecklistGroupCard
+                key={group}
+                title={CHECKLIST_GROUP_LABELS[group]}
+                items={r.technical_audit_checklist!.groups[group]}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="Technical audit checklist unavailable" hint="Re-run the audit to generate it." />
+        )
       ) : null}
 
       {tab === "Issues" ? (

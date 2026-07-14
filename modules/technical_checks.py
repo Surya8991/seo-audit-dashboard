@@ -277,6 +277,43 @@ def check_ssl(url: str) -> dict:
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# HTTPS enforcement — does the http:// origin redirect to https://?
+# ════════════════════════════════════════════════════════════════════════════
+
+def check_https_enforcement(url: str) -> dict:
+    """Verify the http:// version of this host redirects to https://.
+
+    Distinct from check_ssl (which validates the certificate on the URL as
+    requested) — this confirms visitors landing on the insecure origin are
+    forced onto HTTPS rather than being served content over plain HTTP.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        # Already flagged elsewhere (check_ssl / analyze_url_structure) — avoid double-counting.
+        return {"enforced": None, "issues": []}
+
+    http_url = f"http://{parsed.netloc}{parsed.path or '/'}"
+    try:
+        r = requests.get(http_url, headers=HEADERS, timeout=8, verify=True, allow_redirects=True)
+    except (requests.RequestException, OSError) as exc:
+        logger.warning("check_https_enforcement fetch failed for %s: %s", http_url, exc)
+        return {"enforced": None, "issues": []}
+
+    final_scheme = urlparse(r.url).scheme
+    if final_scheme == "https":
+        return {"enforced": True, "issues": []}
+
+    return {
+        "enforced": False,
+        "issues": [_issue(
+            "HTTP Does Not Redirect to HTTPS", "Site Health", "Critical",
+            f"Add a server-level redirect so http://{parsed.netloc} forces HTTPS — "
+            "visitors and crawlers can currently reach an insecure version of this site.",
+            impact_score=9, effort="Low")],
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # DNS health — SPF / DMARC / MX
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -538,6 +575,7 @@ def analyze_site_health(url: str, soup=None, http_headers=None, page_text: str =
             "sitemap": ex.submit(check_sitemap, url),
             "domain_age": ex.submit(check_domain_age, url),
             "ssl": ex.submit(check_ssl, url),
+            "https_enforcement": ex.submit(check_https_enforcement, url),
             "dns": ex.submit(check_dns_health, url),
             "readability": ex.submit(check_readability, page_text),
             "content_freshness": ex.submit(check_content_freshness, http_headers, soup),

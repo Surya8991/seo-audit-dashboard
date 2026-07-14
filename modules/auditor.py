@@ -276,7 +276,7 @@ def analyze_canonical(soup, url):
     }
 
 
-def analyze_indexability(soup):
+def analyze_indexability(soup, http_headers=None):
     issues = []
     robots_meta = soup.find("meta", attrs={"name": re.compile(r"robots", re.I)})
     robots_content = ""
@@ -295,7 +295,24 @@ def analyze_indexability(soup):
                 "Review whether nofollow on meta robots is intentional — it prevents link equity flow.",
                 impact_score=5, effort="Low"))
 
-    return {"robots_meta": robots_content, "is_indexable": is_indexable, "issues": issues}
+    # X-Robots-Tag response header — noindex is already flagged by
+    # modules/advanced_checks.py::analyze_http_headers; only add the
+    # nofollow case here (not covered there) to avoid double-counting.
+    headers = {k.lower(): v for k, v in (http_headers or {}).items()}
+    x_robots_tag = headers.get("x-robots-tag", "").lower()
+    if x_robots_tag:
+        tokens = [t.strip() for t in x_robots_tag.replace(",", " ").split()]
+        if "noindex" in tokens:
+            is_indexable = False
+        if "nofollow" in tokens:
+            issues.append(_issue("X-Robots-Tag Header: Nofollow Active", "Indexability", "Warning",
+                "Review whether nofollow on the X-Robots-Tag header is intentional.",
+                impact_score=5, effort="Low"))
+
+    return {
+        "robots_meta": robots_content, "x_robots_tag": x_robots_tag,
+        "is_indexable": is_indexable, "issues": issues,
+    }
 
 
 def analyze_url_structure(url, response_time=0.0):
@@ -505,6 +522,7 @@ def audit_url(url, audit_type="auto", check_links=True, validate_links=False,
         "seo_score": 0,
         "score_breakdown": {},
         "all_issues": [],
+        "technical_audit_checklist": {},
     }
 
     fetch = fetch_page(url)
@@ -542,7 +560,7 @@ def audit_url(url, audit_type="auto", check_links=True, validate_links=False,
     result["metadata"]     = analyze_metadata(soup, url)
     result["headings"]     = analyze_headings(soup)   # kept for scoring compatibility
     result["canonical"]    = analyze_canonical(soup, url)
-    result["indexability"] = analyze_indexability(soup)
+    result["indexability"] = analyze_indexability(soup, http_headers=fetch.get("http_headers", {}))
     result["url_structure"] = analyze_url_structure(url, result["response_time"])
     result["content"]      = analyze_content(soup, html=fetch.get("html", ""), base_url=url)
     result["images"]       = analyze_images(soup)     # kept for scoring compatibility
@@ -632,6 +650,9 @@ def audit_url(url, audit_type="auto", check_links=True, validate_links=False,
     sr = calculate_seo_score(result)
     result["seo_score"] = sr["score"]
     result["score_breakdown"] = sr["breakdown"]
+
+    from modules.technical_audit_checklist import build_technical_audit_checklist
+    result["technical_audit_checklist"] = build_technical_audit_checklist(result)
 
     return result
 
