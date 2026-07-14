@@ -1,15 +1,17 @@
-"""
-Groq AI assistance layer (adapted from SEO Suite's tools/ai_assist.py).
+"""Groq AI assistance layer — plain-English audit summary.
 Groq is OpenAI-compatible, fast, and has a generous free tier.
-API key: https://console.groq.com -> API Keys
-Env var: GROQ_API_KEY
+API key: https://console.groq.com -> API Keys. Env var: GROQ_API_KEY.
+
+Ported from the standalone Streamlit SEO audit tool's core/ai_assist.py,
+adapted to this project's {issue, category, severity, recommendation,
+impact_score, effort} issue schema.
 """
 
 import logging
 import re
 import time
 
-from core.security import safe_requests_post
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -22,23 +24,12 @@ def _safe_error(exc: Exception) -> str:
     return f"{type(exc).__name__}: {exc}"
 
 
-def _chat(
-    messages: list[dict],
-    api_key: str,
-    model: str = _DEFAULT_MODEL,
-    temperature: float = 0.4,
-    max_tokens: int = 800,
-) -> str:
+def _chat(messages, api_key, model=_DEFAULT_MODEL, temperature=0.4, max_tokens=800):
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    body = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-    }
+    body = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
     last_status = None
     for attempt in range(3):
-        resp = safe_requests_post(_GROQ_CHAT_URL, headers=headers, json=body, timeout=30)
+        resp = requests.post(_GROQ_CHAT_URL, headers=headers, json=body, timeout=30)
         last_status = resp.status_code
         if resp.status_code == 429 or resp.status_code >= 500:
             if attempt < 2:
@@ -46,7 +37,7 @@ def _chat(
                 delay = (
                     float(retry_after)
                     if (retry_after and retry_after.replace(".", "", 1).isdigit())
-                    else 0.5 * (2**attempt)
+                    else 0.5 * (2 ** attempt)
                 )
                 time.sleep(delay)
                 continue
@@ -56,38 +47,35 @@ def _chat(
     raise RuntimeError(f"Groq API unavailable (HTTP {last_status})")
 
 
-def explain_audit(results_list: list[dict], api_key: str, url: str = "", model: str = _DEFAULT_MODEL) -> dict:
-    """Summarise technical SEO audit findings in plain English. Returns {ok, explanation, top_actions, model}."""
+def explain_audit(all_issues: list[dict], seo_score: float, api_key: str,
+                   url: str = "", model: str = _DEFAULT_MODEL) -> dict:
+    """Summarise SEO audit issues in plain English.
+
+    Returns {ok, explanation, top_actions, model, stats} or {ok: False, error}.
+    """
     if not api_key:
         return {"ok": False, "error": "Groq API key not configured"}
 
-    lines, fails, warnings, errors = [], [], [], []
-    for r in results_list:
-        tool = r.get("tool", "unknown")
-        status = r.get("status", "")
-        msg = r.get("message", "")
-        entry = f"[{status.upper()}] {tool}: {msg}"
-        lines.append(entry)
-        if status == "fail":
-            fails.append(entry)
-        elif status == "warning":
-            warnings.append(entry)
-        elif status == "error":
-            errors.append(entry)
+    lines = []
+    by_severity = {"Critical": 0, "High": 0, "Medium": 0, "Warning": 0, "Low": 0}
+    for issue in all_issues:
+        sev = issue.get("severity", "Low")
+        by_severity[sev] = by_severity.get(sev, 0) + 1
+        lines.append(f"[{sev.upper()}] {issue.get('category', '')}: {issue.get('issue', '')}")
 
     summary_text = "\n".join(lines)
     if len(summary_text) > _MAX_AUDIT_CHARS:
-        summary_text = "\n".join(fails + warnings + errors)[:_MAX_AUDIT_CHARS]
+        summary_text = summary_text[:_MAX_AUDIT_CHARS]
 
     site_context = f"for {url}" if url else ""
     system_msg = (
         "You are an expert technical SEO consultant. "
-        "Given a list of technical SEO audit results, explain the findings clearly to a non-technical website owner. "
+        "Given a list of SEO audit issues, explain the findings clearly to a non-technical website owner. "
         "Use plain English. Be direct and specific. Focus on what matters most and skip anything that passed."
     )
     user_msg = (
-        f"Here are the technical SEO audit results {site_context}:\n\n"
-        f"{summary_text}\n\n"
+        f"SEO health score: {seo_score}/100. Audit issues found {site_context}:\n\n"
+        f"{summary_text or '(no issues found)'}\n\n"
         f"Please:\n"
         f"1. Give a 2-3 sentence plain-English summary of the overall technical SEO health.\n"
         f"2. List the top 3-5 most important actions to fix, ordered by priority.\n"
@@ -98,27 +86,18 @@ def explain_audit(results_list: list[dict], api_key: str, url: str = "", model: 
     try:
         reply = _chat(
             [{"role": "system", "content": system_msg}, {"role": "user", "content": user_msg}],
-            api_key,
-            model=model,
-            max_tokens=700,
+            api_key, model=model, max_tokens=700,
         )
         lines_out = [ln.strip() for ln in reply.split("\n") if ln.strip()]
         action_pattern = re.compile(r"^[\d]+[\.\)]\s+")
         explanation_lines = [ln for ln in lines_out if not action_pattern.match(ln)]
-        action_lines = [
-            re.sub(r"^[\d]+[\.\)]\s+", "", ln) for ln in lines_out if action_pattern.match(ln)
-        ]
+        action_lines = [re.sub(r"^[\d]+[\.\)]\s+", "", ln) for ln in lines_out if action_pattern.match(ln)]
         return {
             "ok": True,
             "explanation": " ".join(explanation_lines[:4]),
             "top_actions": action_lines[:5],
             "model": model,
-            "stats": {
-                "fails": len(fails),
-                "warnings": len(warnings),
-                "errors": len(errors),
-                "passes": len(lines) - len(fails) - len(warnings) - len(errors),
-            },
+            "stats": by_severity,
         }
     except Exception as exc:
         logger.warning("explain_audit failed: %s", exc)

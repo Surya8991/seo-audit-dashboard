@@ -1,6 +1,51 @@
-.env
+# Python
 __pycache__/
-*.pyc
-.venv/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
 venv/
-.streamlit/secrets.toml
+.venv/
+env/
+.env*
+
+# Node / Next.js
+/node_modules
+/.pnp
+.pnp.*
+/coverage
+/.next/
+/out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Vercel
+.vercel
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs & temp
+*.log
+*.tmp
+audit_cache/
+
+# Backup artefacts
+backup/
+*.zip
+
