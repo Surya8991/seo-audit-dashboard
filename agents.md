@@ -135,6 +135,15 @@ prior standalone Streamlit SEO audit tool ported in on top.
 - `modules/advanced_checks.py`, `link_auditor.py`, `image_auditor.py`,
   `heading_auditor.py`, `mobile_auditor.py`, `course_auditor.py`,
   `blog_auditor.py`, `pagespeed.py`, `report_generator.py`, `scoring.py`
+- **`report_generator.py` CSV/Excel formula-injection guard:** every
+  page-controlled string written to a CSV/XLSX cell (title, description,
+  canonical URL, anchor text, issue text, checklist detail) goes through
+  `_sanitize_row`/`_sanitize_cell`, which prefixes a leading `'` on any value
+  starting with `=`/`+`/`-`/`@` so a malicious page can't get Excel/Sheets to
+  evaluate a formula when the export is later opened. PDF export is
+  unaffected (FPDF draws text, never evaluates formulas). Any new field added
+  to `flatten()` or the Excel row-builders in `generate_excel()` MUST be
+  wrapped in `_sanitize_row` too, don't build a raw dict and skip it.
 - `lib/aggregate.ts`, `lib/scoring.ts`: **must stay in sync** with
   `modules/scoring.py`'s `WEIGHTS`/`THEMES` (duplicated by design, see the
   comment in `lib/aggregate.ts`, to avoid round-tripping to the Python API
