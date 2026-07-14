@@ -6,6 +6,9 @@ import { Card, EmptyState, IssueRow, PageHeader, ScoreBadge, StatusPill } from "
 import { getThematicIssues, getTopIssuesByImpact } from "@/lib/aggregate";
 import { WEIGHTS } from "@/lib/scoring";
 import type { ChecklistItem } from "@/lib/types";
+import { CHECK_DEFS, GROUP_HELP, GROUP_LABELS } from "@/lib/checklistDefs";
+import { HelpDialog } from "@/components/HelpDialog";
+import { useSelectedChecks } from "@/lib/useSelectedChecks";
 
 const TABS = [
   "Overview",
@@ -18,22 +21,30 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number];
 
-const CHECKLIST_GROUP_LABELS: Record<string, string> = {
-  crawlability: "Crawlability",
-  on_page: "On-Page",
-  site_health: "Site Health",
-};
+const CHECK_DESCRIPTIONS: Record<string, string> = Object.fromEntries(
+  CHECK_DEFS.map((c) => [c.id, c.description]),
+);
 
-function ChecklistGroupCard({ title, items }: { title: string; items: ChecklistItem[] }) {
+function ChecklistGroupCard({
+  group,
+  items,
+}: {
+  group: ChecklistItem["group"];
+  items: ChecklistItem[];
+}) {
   return (
     <Card>
-      <h3 className="mb-3 text-sm font-semibold text-[var(--seo-subheading)]">
-        {title} ({items.length})
-      </h3>
+      <div className="mb-3 flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-[var(--seo-subheading)]">
+          {GROUP_LABELS[group]} ({items.length})
+        </h3>
+        <HelpDialog title={GROUP_LABELS[group]}>{GROUP_HELP[group]}</HelpDialog>
+      </div>
       <div className="flex flex-col">
         {items.map((item) => (
           <div
             key={item.id}
+            title={CHECK_DESCRIPTIONS[item.id]}
             className="flex items-center justify-between gap-3 border-b border-[var(--seo-border)] py-2 last:border-0"
           >
             <div className="min-w-0">
@@ -122,6 +133,7 @@ export default function DetailPage() {
   const [tab, setTab] = useState<Tab>("Overview");
   const [aiSummary, setAiSummary] = useState<AiSummary | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const { selected: selectedChecks } = useSelectedChecks();
 
   if (results.length === 0) {
     return (
@@ -292,31 +304,55 @@ export default function DetailPage() {
 
       {tab === "Technical Audit" ? (
         r.technical_audit_checklist ? (
-          <div className="flex flex-col gap-4">
-            <Card>
-              <div className="flex flex-wrap items-center gap-4 text-sm">
-                <span className="font-semibold text-[var(--seo-subheading)]">
-                  Technical SEO Audit — {r.technical_audit_checklist.summary.total} checks
-                </span>
-                <span className="flex items-center gap-1">
-                  <StatusPill status="pass" /> {r.technical_audit_checklist.summary.pass}
-                </span>
-                <span className="flex items-center gap-1">
-                  <StatusPill status="warning" /> {r.technical_audit_checklist.summary.warning}
-                </span>
-                <span className="flex items-center gap-1">
-                  <StatusPill status="fail" /> {r.technical_audit_checklist.summary.fail}
-                </span>
+          (() => {
+            const filteredGroups = {
+              crawlability: r.technical_audit_checklist.groups.crawlability.filter((c) => selectedChecks.has(c.id)),
+              on_page: r.technical_audit_checklist.groups.on_page.filter((c) => selectedChecks.has(c.id)),
+              site_health: r.technical_audit_checklist.groups.site_health.filter((c) => selectedChecks.has(c.id)),
+            };
+            const shown = filteredGroups.crawlability.length + filteredGroups.on_page.length + filteredGroups.site_health.length;
+            const shownChecks = [...filteredGroups.crawlability, ...filteredGroups.on_page, ...filteredGroups.site_health];
+            const shownPass = shownChecks.filter((c) => c.status === "pass").length;
+            const shownWarning = shownChecks.filter((c) => c.status === "warning").length;
+            const shownFail = shownChecks.filter((c) => c.status === "fail").length;
+            return (
+              <div className="flex flex-col gap-4">
+                <Card>
+                  <div className="flex flex-wrap items-center gap-4 text-sm">
+                    <span className="font-semibold text-[var(--seo-subheading)]">
+                      Technical SEO Audit — {shown} of {r.technical_audit_checklist.summary.total} checks shown
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <StatusPill status="pass" /> {shownPass}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <StatusPill status="warning" /> {shownWarning}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <StatusPill status="fail" /> {shownFail}
+                    </span>
+                  </div>
+                  {shown < r.technical_audit_checklist.summary.total ? (
+                    <p className="mt-2 text-xs text-[var(--seo-muted)]">
+                      {r.technical_audit_checklist.summary.total - shown} check(s) hidden — adjust in
+                      Technical Audit → Customize checks.
+                    </p>
+                  ) : null}
+                </Card>
+                {(["crawlability", "on_page", "site_health"] as const).map((group) =>
+                  filteredGroups[group].length > 0 ? (
+                    <ChecklistGroupCard key={group} group={group} items={filteredGroups[group]} />
+                  ) : null,
+                )}
+                {shown === 0 ? (
+                  <EmptyState
+                    title="All checks hidden"
+                    hint="Go to Technical Audit → Customize checks and select at least one check."
+                  />
+                ) : null}
               </div>
-            </Card>
-            {(["crawlability", "on_page", "site_health"] as const).map((group) => (
-              <ChecklistGroupCard
-                key={group}
-                title={CHECKLIST_GROUP_LABELS[group]}
-                items={r.technical_audit_checklist!.groups[group]}
-              />
-            ))}
-          </div>
+            );
+          })()
         ) : (
           <EmptyState title="Technical audit checklist unavailable" hint="Re-run the audit to generate it." />
         )

@@ -59,6 +59,26 @@ prior standalone Streamlit SEO audit tool ported in on top.
   read-only view derived from an already-computed `audit_url()` result, never
   re-fetches or re-scores. Exposed as `result["technical_audit_checklist"]`
   and rendered on the "Technical Audit" tab of `app/detail/page.tsx`.
+- `lib/checklistDefs.ts` — the **frontend mirror** of the 35 check ids/labels/
+  groups in `modules/technical_audit_checklist.py`, plus a one-sentence
+  plain-English `description` per check (used by the explainer card, the
+  check-selection panel, and per-check tooltips). Keep in sync with the
+  Python module — `lib/checklistDefs.test.ts` guards the 35-total / 12-11-12
+  group split but can't catch an id renamed on only one side.
+- `lib/useSelectedChecks.ts` — shared localStorage-persisted hook for which
+  checks are enabled (default: all 35). Used by `components/CheckSelector.tsx`
+  (the "Customize checks" panel on the Technical Audit page) to edit the
+  selection, and by the detail page's Technical Audit tab to filter which
+  checks are displayed. **Display-only filter** — the backend always computes
+  all 35 checks in one `audit_url()` call regardless of selection, since
+  they're bundled into a single page fetch and skipping individual checks
+  server-side wouldn't meaningfully speed anything up.
+- `components/HelpDialog.tsx` — reusable "ⓘ" icon button that opens a small
+  plain-English explanation popover; used on each Technical Audit input-mode
+  card and each checklist group (Crawlability/On-Page/Site Health).
+- `components/ChecklistExplainer.tsx` — the "What Technical SEO checks" card
+  at the top of the Technical Audit page (all 35 checks as pills + a
+  "when to use" note), mirroring the reference tool's use-case explainer.
 - `modules/advanced_checks.py`, `link_auditor.py`, `image_auditor.py`,
   `heading_auditor.py`, `mobile_auditor.py`, `course_auditor.py`,
   `blog_auditor.py`, `pagespeed.py`, `report_generator.py`, `scoring.py`

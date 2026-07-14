@@ -12,17 +12,32 @@ import {
   runCrawl,
   type CrawlProgress,
 } from "@/lib/crawl/orchestrator";
+import { ChecklistExplainer } from "@/components/ChecklistExplainer";
+import { HelpDialog } from "@/components/HelpDialog";
+import { CheckSelector } from "@/components/CheckSelector";
 
 type InputMode = "single" | "sitemap" | "list" | "crawl";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
-const MODES: { id: InputMode; label: string; icon: string; hint: string }[] = [
-  { id: "single", label: "Single URL", icon: "🔗", hint: "Audit one page." },
-  { id: "sitemap", label: "Sitemap", icon: "🗺️", hint: "Sitewide audit from sitemap.xml." },
-  { id: "crawl", label: "Crawl from URL", icon: "🕷️", hint: "Discover pages by following links — no sitemap needed." },
-  { id: "list", label: "CSV / Paste URLs", icon: "📄", hint: "Bulk audit a list of URLs." },
+const MODES: { id: InputMode; label: string; icon: string; hint: string; help: string }[] = [
+  {
+    id: "single", label: "Single URL", icon: "🔗", hint: "Audit one page.",
+    help: "Runs the full 35-check technical audit on exactly one URL you enter. Best when you just want to check one page — a new blog post, a landing page you're about to publish, or a page a client asked about.",
+  },
+  {
+    id: "sitemap", label: "Sitemap", icon: "🗺️", hint: "Sitewide audit from sitemap.xml.",
+    help: "Reads a site's sitemap.xml (following nested sitemap-index files automatically) and audits a sample of the URLs it finds. Best for a broad health check across an entire site without manually listing every page.",
+  },
+  {
+    id: "crawl", label: "Crawl from URL", icon: "🕷️", hint: "Discover pages by following links — no sitemap needed.",
+    help: "Starts at one URL and discovers more pages by following its internal links, the same way a search engine crawler would. Best when a site has no sitemap, or you want to check exactly what's actually reachable by clicking around the site.",
+  },
+  {
+    id: "list", label: "CSV / Paste URLs", icon: "📄", hint: "Bulk audit a list of URLs.",
+    help: "Audits a specific list of URLs you provide — paste them one per line, or upload a CSV/TXT file with a url/link column. Best when you already know exactly which pages you want checked (e.g. a client's priority page list).",
+  },
 ];
 
 export default function TechnicalAuditPage() {
@@ -222,26 +237,39 @@ export default function TechnicalAuditPage() {
         subtitle="Run a technical SEO audit on a single URL, an entire sitemap, a crawl, or a list of URLs."
       />
 
+      <ChecklistExplainer />
+
       {/* Mode selector */}
       <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4">
         {MODES.map((m) => (
-          <button
+          <div
             key={m.id}
-            type="button"
-            onClick={() => setMode(m.id)}
-            disabled={running}
-            className={`flex flex-col items-start rounded-xl border p-3 text-left transition-colors disabled:opacity-60 ${
+            role="button"
+            tabIndex={running ? -1 : 0}
+            aria-disabled={running}
+            onClick={() => !running && setMode(m.id)}
+            onKeyDown={(e) => {
+              if (!running && (e.key === "Enter" || e.key === " ")) setMode(m.id);
+            }}
+            className={`relative flex flex-col items-start rounded-xl border p-3 text-left transition-colors ${
+              running ? "cursor-default opacity-60" : "cursor-pointer"
+            } ${
               mode === m.id
                 ? "border-[var(--seo-accent)] bg-[var(--seo-accent-light)]"
                 : "border-[var(--seo-border)] hover:bg-[var(--seo-card-hover)]"
             }`}
           >
+            <div className="absolute right-2 top-2" onClick={(e) => e.stopPropagation()}>
+              <HelpDialog title={m.label}>{m.help}</HelpDialog>
+            </div>
             <span className="text-lg">{m.icon}</span>
             <span className="mt-1 text-sm font-semibold text-[var(--seo-subheading)]">{m.label}</span>
-            <span className="text-xs text-[var(--seo-muted)]">{m.hint}</span>
-          </button>
+            <span className="pr-4 text-xs text-[var(--seo-muted)]">{m.hint}</span>
+          </div>
         ))}
       </div>
+
+      <CheckSelector />
 
       <Card>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
