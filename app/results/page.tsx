@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAudit } from "@/lib/state/AuditContext";
-import { Card, EmptyState, PageHeader, ScoreBadge } from "@/components/ui";
+import { Card, EmptyState, PageHeader, ScoreBadge, ScoreCircle } from "@/components/ui";
+import { allIssuesOf, avgScore } from "@/lib/aggregate";
 
 export default function ResultsPage() {
   const { results, navFilter, setNavFilter, setSelectedUrlIndex, clearAll } = useAudit();
@@ -34,6 +35,37 @@ export default function ResultsPage() {
     });
   }, [results, scoreMax, brokenOnly]);
 
+  // Sitewide rollup — only meaningful when more than one URL was audited.
+  const rollup = useMemo(() => {
+    if (results.length < 2) return null;
+    const issues = allIssuesOf(results);
+    const dist = { good: 0, warn: 0, poor: 0 };
+    for (const r of results) {
+      const s = r.seo_score ?? 0;
+      if (s >= 70) dist.good++;
+      else if (s >= 50) dist.warn++;
+      else dist.poor++;
+    }
+    // Top failing checks = most frequent issue titles across all URLs.
+    const freq = new Map<string, { count: number; severity: string }>();
+    for (const i of issues) {
+      const key = i.issue;
+      const cur = freq.get(key);
+      if (cur) cur.count++;
+      else freq.set(key, { count: 1, severity: i.severity });
+    }
+    const topFailing = [...freq.entries()]
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 6)
+      .map(([issue, v]) => ({ issue, ...v }));
+    return {
+      avg: avgScore(results),
+      totalIssues: issues.length,
+      dist,
+      topFailing,
+    };
+  }, [results]);
+
   if (results.length === 0) {
     return (
       <div>
@@ -46,6 +78,47 @@ export default function ResultsPage() {
   return (
     <div>
       <PageHeader title="📋 Audit Results" subtitle={`${filtered.length} of ${results.length} URLs`} />
+
+      {rollup ? (
+        <Card className="mb-4">
+          <h3 className="mb-3 text-sm font-semibold text-[var(--seo-subheading)]">
+            Sitewide Summary
+          </h3>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[auto_1fr]">
+            <div className="flex items-center gap-6">
+              <ScoreCircle score={rollup.avg} size={88} label="Avg score" />
+              <div className="flex flex-col gap-1 text-sm">
+                <span className="text-[var(--seo-text-light)]">
+                  <strong className="text-[var(--seo-heading)]">{results.length}</strong> URLs audited
+                </span>
+                <span className="text-[var(--seo-text-light)]">
+                  <strong className="text-[var(--seo-heading)]">{rollup.totalIssues}</strong> total issues
+                </span>
+                <span className="flex gap-3 text-xs">
+                  <span style={{ color: "var(--seo-success)" }}>● {rollup.dist.good} good</span>
+                  <span style={{ color: "var(--seo-warning)" }}>● {rollup.dist.warn} fair</span>
+                  <span style={{ color: "var(--seo-error)" }}>● {rollup.dist.poor} poor</span>
+                </span>
+              </div>
+            </div>
+            <div>
+              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--seo-muted)]">
+                Top failing checks (site-wide)
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {rollup.topFailing.map((f) => (
+                  <div key={f.issue} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="truncate text-[var(--seo-text)]">{f.issue}</span>
+                    <span className="shrink-0 rounded-full bg-[var(--seo-card-hover)] px-2 py-0.5 text-xs font-medium text-[var(--seo-text-light)]">
+                      {f.count} pages
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </Card>
+      ) : null}
 
       <Card className="mb-4">
         <div className="flex flex-wrap items-end gap-6">

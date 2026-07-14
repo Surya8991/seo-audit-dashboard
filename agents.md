@@ -17,11 +17,20 @@ prior standalone Streamlit SEO audit tool ported in on top.
   persisted client-side only (localStorage via `lib/state/AuditContext.tsx`)
 
 ## Key directories/files
-- `app/` — Next.js pages (results, detail, links, headings, performance, export, settings, new-audit)
+- `app/` — Next.js pages: dashboard (`/`), **`technical-audit`** (single URL /
+  sitemap / CSV-paste multi-input audit — formerly `new-audit`), results,
+  detail, links, headings, performance, export, settings
 - `api/audit.py` — runs a full audit for one URL, returns `modules.auditor.audit_url()` almost verbatim
+- `api/sitemap.py` — resolves a sitemap (or bare domain) to a URL list for the
+  sitewide Technical Audit; see "Sitewide/bulk audit architecture" below
 - `api/ai-summary.py` — Groq AI plain-English summary endpoint
 - `api/pagespeed.py`, `api/export.py`, `api/config-status.py`
 - `modules/auditor.py` — core fetch + orchestration, SSRF guard (`validate_audit_url`)
+- `modules/sitemap_extractor.py` — sitemap/sitemap-index fetch + recursion
+  (depth cap 5), gzip support, SSRF-validated, dedup + include/exclude filter
+  + URL cap (default 50, max 200). Adapts the parse logic already in
+  `technical_checks.py::check_sitemap` (which only counts URLs — this module
+  returns them).
 - `modules/technical_checks.py` — domain age (WHOIS), SSL, HTTPS enforcement
   (does http:// redirect to https://?), DNS/SPF/DMARC/MX, robots.txt,
   sitemap.xml, readability, content freshness, canonical-loop detection,
@@ -40,9 +49,19 @@ prior standalone Streamlit SEO audit tool ported in on top.
   `modules/scoring.py`'s `WEIGHTS`/`THEMES` (duplicated by design — see the
   comment in `lib/aggregate.ts` — to avoid round-tripping to the Python API
   just to group/sort already-computed issues)
-- `lib/state/AuditContext.tsx` — client-side persisted state (results, Groq API key)
+- `lib/state/AuditContext.tsx` — client-side persisted state (results, Groq API
+  key). `addResults(results[])` batches N results into one state update/one
+  localStorage write — use this for bulk audits, not a loop of `addResult`.
+- `lib/crawl/parseUrlList.ts` — client-side CSV/TSV/paste URL-list parser (no
+  upload, no server storage). Detects a url/link header column or scrapes any
+  http(s) cell.
+- `lib/crawl/orchestrator.ts` — `runCrawl(urls, opts, callbacks)`: bounded-
+  concurrency (default 5, max 10) fan-out of single-URL `/api/audit` calls from
+  the browser, with progress + incremental-result callbacks and abort support.
 - `tests/` — pytest unit tests (pure-logic checklist tests + mocked-network
-  tests for `check_https_enforcement`/X-Robots-Tag handling); see "Testing" below
+  tests for `check_https_enforcement`/X-Robots-Tag handling + sitemap
+  extractor); see "Testing" below. `lib/crawl/*.test.ts` — Vitest unit tests
+  for the URL-list parser.
 
 ## How to run
 ```bash
@@ -54,6 +73,26 @@ npm run dev
 `/api/*.py` endpoints only run under Vercel's runtime (`vercel dev`) — plain
 `next dev` 404s on API calls, expected for frontend-only work.
 
+## Sitewide/bulk audit architecture
+The Technical Audit page (`app/technical-audit/page.tsx`) supports Single URL,
+Sitemap, and CSV/Paste modes. Because this app is stateless Vercel serverless
+(no DB, no long-lived process, no SSE, 60s/function cap — see `vercel.json`),
+sitewide crawls are **client-orchestrated**, not server-orchestrated like the
+reference tool (which uses a long-lived Flask process + daemon thread + SSE +
+on-disk checkpointing — that model does NOT port here):
+1. `api/sitemap.py` (or the client-side CSV/paste parser) resolves a bounded
+   URL list — one fast invocation, well under 60s even for a 2,000+ URL sitemap.
+2. The browser (`lib/crawl/orchestrator.ts::runCrawl`) fans out bounded-
+   concurrency single-URL `POST /api/audit` calls — one invocation per URL, so
+   nothing risks the function timeout.
+3. Results batch into `AuditContext.addResults()` (one state update per batch,
+   not per URL) and the Results page renders a sitewide rollup card
+   (avg score, score distribution, top failing checks) when 2+ URLs are present.
+
+Live-verified end-to-end against `https://www.edstellar.com/sitemap.xml`
+(2,461 URLs) — see `tests/test_sitewide_pipeline_live.py` (opt-in,
+`RUN_LIVE_TESTS=1`) and `PROJECT_LOG.md` session history.
+
 ## Env vars
 - `PSI_API_KEY` (optional) — PageSpeed Insights quota
 - `GROQ_API_KEY` (optional) — server-side default for the AI Summary feature;
@@ -61,14 +100,20 @@ npm run dev
 
 ## Testing
 ```bash
+# Python
 source .venv/Scripts/activate  # .venv/bin/activate on macOS/Linux
 pip install -r requirements-dev.txt
-python -m pytest tests/ -v
+python -m pytest tests/ -v                       # unit tests, network mocked
+RUN_LIVE_TESTS=1 python -m pytest tests/ -v       # + opt-in live network tests
+
+# Frontend (Vitest)
+npm run test
 ```
-Python-only for now (checklist derivation logic + the two new site-health/
-indexability checks) — no frontend test runner is configured. `conftest.py`
-at the repo root puts the project root on `sys.path` so `from modules...`
-imports resolve without the `api/*.py` Vercel-handler sys.path shim.
+`conftest.py` at the repo root puts the project root on `sys.path` so
+`from modules...` imports resolve without the `api/*.py` Vercel-handler
+sys.path shim. Live tests (`test_live_edstellar_sitemap`,
+`test_sitewide_pipeline_live.py`) are skipped by default — they hit the real
+Edstellar sitemap/pages and take 30+ seconds; opt in with `RUN_LIVE_TESTS=1`.
 
 ## Agent notes / gotchas
 - Every check module returns `{..., "issues": [...]}` where each issue is
@@ -102,3 +147,17 @@ imports resolve without the `api/*.py` Vercel-handler sys.path shim.
   separate use cases in the source tool and were intentionally left out of
   this checklist). If `modules/scoring.py`'s underlying check modules change
   shape, update the corresponding field lookups in `build_technical_audit_checklist()`.
+- Do NOT run a whole sitemap crawl inside one `api/*.py` invocation — the
+  60s Vercel cap means one invocation = one URL. Do NOT copy the reference
+  tool's server-side SSE/daemon-thread/checkpoint orchestration model —
+  there's no long-lived process here; the browser drives the crawl.
+- Sitewide/bulk mode intentionally does NOT dedupe domain-level `site_health`
+  checks (WHOIS/DNS/SSL/robots/sitemap/HTTP2) across pages of the same
+  domain yet — each URL re-runs them independently. This is a known
+  optimization opportunity (see PROJECT_LOG.md "PHASE 2"), not a bug, but
+  don't be surprised the WHOIS/DNS calls repeat per URL in a sitewide run.
+- `vercel dev` needs interactive account linking on first run (hangs in
+  non-interactive/CI environments) — browser verification of `/api/*.py`
+  routes in this repo's sessions has instead relied on (a) pytest hitting the
+  Python modules directly, and (b) mocking `window.fetch` in the browser to
+  verify the client-side orchestrator/UI wiring independently.

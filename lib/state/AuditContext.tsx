@@ -25,6 +25,7 @@ interface AuditContextValue {
   navFilter: NavFilter | null;
   groqApiKey: string;
   addResult: (result: AuditResult) => void;
+  addResults: (results: AuditResult[]) => void;
   setSelectedUrlIndex: (index: number) => void;
   setNavFilter: (filter: NavFilter | null) => void;
   setGroqApiKey: (key: string) => void;
@@ -87,6 +88,25 @@ export function AuditProvider({ children }: { children: ReactNode }) {
             return next;
           }
           return [result, ...prev];
+        });
+        setLastAuditDate(new Date().toISOString());
+        setSelectedUrlIndex(0);
+      },
+      // Batched add for sitewide/bulk audits — one state update + one
+      // localStorage write for N results (vs. N writes via addResult).
+      // Upserts by URL: existing URLs are replaced, new ones prepended.
+      addResults: (incoming) => {
+        if (!incoming.length) return;
+        setResults((prev) => {
+          const byUrl = new Map(prev.map((r) => [r.url, r]));
+          for (const r of incoming) byUrl.set(r.url, r);
+          // New results first (incoming order), then prior results not re-audited.
+          const incomingUrls = new Set(incoming.map((r) => r.url));
+          const merged = [
+            ...incoming.map((r) => byUrl.get(r.url)!),
+            ...prev.filter((r) => !incomingUrls.has(r.url)),
+          ];
+          return merged;
         });
         setLastAuditDate(new Date().toISOString());
         setSelectedUrlIndex(0);
