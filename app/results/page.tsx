@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAudit } from "@/lib/state/AuditContext";
 import { Card, EmptyState, PageHeader, ScoreBadge, ScoreCircle, StatusPill } from "@/components/ui";
+import { ExportBar } from "@/components/ExportBar";
 import { allIssuesOf, avgScore } from "@/lib/aggregate";
+import { difficultyBreakdown } from "@/lib/difficulty";
 import type { AuditResult } from "@/lib/types";
 
 function hostOf(url: string): string {
@@ -13,6 +15,27 @@ function hostOf(url: string): string {
   } catch {
     return url;
   }
+}
+
+/** Compact Easy/Medium/Hard fix-effort counts for a result's issues. */
+function EffortChips({ result }: { result: AuditResult }) {
+  const b = difficultyBreakdown(result.all_issues || []);
+  if (b.Easy + b.Medium + b.Hard === 0) {
+    return <span className="text-xs text-[var(--seo-success)]">None</span>;
+  }
+  const chip = (n: number, label: string, color: string) =>
+    n > 0 ? (
+      <span className="rounded px-1.5 py-0.5 text-xs font-medium" style={{ color, backgroundColor: "var(--seo-card-hover)" }} title={`${n} ${label} fix${n > 1 ? "es" : ""}`}>
+        {n} {label}
+      </span>
+    ) : null;
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      {chip(b.Easy, "easy", "var(--seo-success)")}
+      {chip(b.Medium, "med", "var(--seo-warning)")}
+      {chip(b.Hard, "hard", "var(--seo-error)")}
+    </span>
+  );
 }
 
 function worstIssue(r: AuditResult): string {
@@ -199,6 +222,8 @@ export default function ResultsPage() {
         </div>
       </Card>
 
+      <ExportBar results={results} />
+
       <div className="flex flex-col gap-4">
         {groups.map((g) => {
           const isCollapsed = collapsed[g.host];
@@ -229,6 +254,7 @@ export default function ResultsPage() {
                         <th className="px-4 py-2.5">URL</th>
                         <th className="px-4 py-2.5">Score</th>
                         <th className="px-4 py-2.5">Checklist</th>
+                        <th className="px-4 py-2.5">Fix effort</th>
                         <th className="px-4 py-2.5">Top issue</th>
                         <th className="px-4 py-2.5" />
                       </tr>
@@ -262,6 +288,9 @@ export default function ResultsPage() {
                               ) : (
                                 <span className="text-xs text-[var(--seo-muted)]">N/A</span>
                               )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <EffortChips result={r} />
                             </td>
                             <td className="max-w-xs truncate px-4 py-3 text-[var(--seo-text-light)]">
                               {top || <span className="text-[var(--seo-success)]">No issues</span>}

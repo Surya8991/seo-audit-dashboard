@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { scoreColor, severityColor } from "@/lib/format";
 import type { Issue } from "@/lib/types";
+import { fixDifficulty, type Difficulty } from "@/lib/difficulty";
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <div className={`card p-5 ${className}`}>{children}</div>;
@@ -89,12 +90,29 @@ export function ScoreCircle({
   );
 }
 
+const DIFFICULTY_STYLE: Record<Difficulty, { color: string; bg: string }> = {
+  Easy: { color: "var(--seo-success)", bg: "var(--seo-success-bg)" },
+  Medium: { color: "var(--seo-warning)", bg: "var(--seo-warning-bg)" },
+  Hard: { color: "var(--seo-error)", bg: "var(--seo-error-bg)" },
+};
+
+/** "Effort to fix" pill (Easy / Medium / Hard), derived from an issue's effort. */
+export function DifficultyBadge({ difficulty }: { difficulty: Difficulty }) {
+  const s = DIFFICULTY_STYLE[difficulty];
+  return (
+    <span className="pill" style={{ color: s.color, backgroundColor: s.bg }} title="Estimated effort to fix">
+      {difficulty} fix
+    </span>
+  );
+}
+
 export function IssueRow({ issue }: { issue: Issue }) {
   return (
     <div className="flex items-start justify-between gap-3 border-b border-[var(--seo-border)] py-3 last:border-0">
       <div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <SeverityBadge severity={issue.severity} />
+          <DifficultyBadge difficulty={fixDifficulty(issue)} />
           <span className="text-xs text-[var(--seo-muted)]">{issue.category}</span>
         </div>
         <div className="mt-1 text-sm font-medium text-[var(--seo-subheading)]">
@@ -115,6 +133,7 @@ const CHECK_STATUS_STYLE: Record<string, { color: string; bg: string; label: str
   pass: { color: "var(--seo-success)", bg: "var(--seo-success-bg)", label: "Pass" },
   warning: { color: "var(--seo-warning)", bg: "var(--seo-warning-bg)", label: "Warning" },
   fail: { color: "var(--seo-error)", bg: "var(--seo-error-bg)", label: "Fail" },
+  info: { color: "var(--seo-muted)", bg: "var(--seo-card-hover)", label: "Info" },
 };
 
 /** Pass/Warning/Fail pill, used by the Technical SEO Audit checklist view. */

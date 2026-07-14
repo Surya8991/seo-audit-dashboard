@@ -24,12 +24,9 @@ const NAV_SECTIONS: NavSection[] = [
       { href: "/technical-audit", icon: "🚀", label: "Technical Audit" },
       // Results is the single per-URL section: the list lives at /results and
       // the drill-down (with Links / Headings / Performance tabs) at /detail.
+      // Report export is an action bar on the Results page (no separate item).
       { href: "/results", icon: "📋", label: "Results" },
     ],
-  },
-  {
-    title: "Additional Tools",
-    items: [{ href: "/export", icon: "📤", label: "Export Reports" }],
   },
   {
     items: [{ href: "/settings", icon: "⚙️", label: "Settings" }],

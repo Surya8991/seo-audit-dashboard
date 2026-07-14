@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useAudit } from "@/lib/state/AuditContext";
-import { Card, EmptyState, IssueRow, PageHeader, ScoreBadge, StatusPill } from "@/components/ui";
+import { Card, DifficultyBadge, EmptyState, IssueRow, PageHeader, ScoreBadge, StatusPill } from "@/components/ui";
+import { difficultyBreakdown } from "@/lib/difficulty";
 import { getThematicIssues, getTopIssuesByImpact } from "@/lib/aggregate";
 import { WEIGHTS } from "@/lib/scoring";
 import { scoreColor } from "@/lib/format";
@@ -233,11 +234,27 @@ export default function DetailPage() {
         </div>
       ) : null}
 
-      <div className="mb-4 flex items-center gap-3">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <ScoreBadge score={r.seo_score ?? 0} />
         <span className="text-sm text-[var(--seo-text-light)]">
           Status {r.status_code ?? "N/A"} · {issues.length} issues · {r.response_time?.toFixed?.(2) ?? "N/A"}s
         </span>
+        {issues.length > 0
+          ? (() => {
+              const b = difficultyBreakdown(issues);
+              return (
+                <span className="flex items-center gap-1.5 text-xs">
+                  <span className="text-[var(--seo-muted)]">Fix effort:</span>
+                  {b.Easy > 0 ? <DifficultyBadge difficulty="Easy" /> : null}
+                  {b.Medium > 0 ? <DifficultyBadge difficulty="Medium" /> : null}
+                  {b.Hard > 0 ? <DifficultyBadge difficulty="Hard" /> : null}
+                  <span className="text-[var(--seo-muted)]">
+                    ({b.Easy} / {b.Medium} / {b.Hard})
+                  </span>
+                </span>
+              );
+            })()
+          : null}
       </div>
 
       <div className="mb-4 flex flex-wrap gap-1 border-b border-[var(--seo-border)]">

@@ -7,7 +7,7 @@ export interface Issue {
   effort: string;
 }
 
-export type ChecklistStatus = "pass" | "warning" | "fail";
+export type ChecklistStatus = "pass" | "warning" | "fail" | "info";
 
 export interface ChecklistItem {
   id: string;

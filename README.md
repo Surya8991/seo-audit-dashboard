@@ -55,7 +55,7 @@ summary from this project's standalone Streamlit SEO audit tool ported in as
 |---|---|
 | **Domain Age** | WHOIS creation date, registrar |
 | **SSL Certificate** | Expiry date, days-left warning, verification errors |
-| **DNS Health** | SPF / DMARC / MX record presence and policy |
+| **DNS Health** | SPF / DMARC / MX record presence, shown as **informational only** (email-deliverability records, not SEO ranking signals: they do not affect the SEO score) |
 | **robots.txt** | Crawl allow/disallow for `*` and Googlebot, crawl-delay |
 | **sitemap.xml** | XML validity, URL count, duplicate detection |
 | **Readability** | Flesch-Kincaid grade + reading ease (via textstat) |
@@ -77,17 +77,21 @@ summary from this project's standalone Streamlit SEO audit tool ported in as
 |---|---|
 | **SEO Health Score** | Weighted 0–100 score across 11 categories |
 | **Impact Score** | Each issue rated 1–10 (ranking importance) |
-| **Effort Level** | Low / Medium / High effort label per issue |
+| **Fix Difficulty** | Every issue is labelled Easy / Medium / Hard (from its Low/Medium/High effort). Shown as a badge per issue, a "Fix effort" column on the Results list, and an Easy/Medium/Hard rollup on the detail header, so you can triage by how much work each fix takes |
 | **Top Issues by Impact** | Priority-ranked recommendations, fix high-impact first |
 | **Thematic Grouping** | SEMrush-style: Crawlability / Metadata / Content / Links / Technical / Social & Schema |
 | **Radar Chart** | Visual per-category score breakdown |
 
 ### Export
+Report export lives as an action bar on the **Results** page (not a separate
+nav item): pick a format and the current session's results download directly.
+
 | Format | Contents |
 |---|---|
 | **CSV** | Flat summary of all audited URLs |
 | **Excel** | 3 sheets: Audit Summary + All Issues + Link Audit, colour-coded |
 | **PDF** | Executive summary with colour-coded score table |
+| **JSON** | Full raw audit data for every URL |
 
 ---
 
@@ -156,7 +160,7 @@ calls, which is expected for local UI-only work.
 | Metadata | 16% | Title, description, OG tags |
 | Content | 15% | Word count, thin content, ratio |
 | Internal Links | 11% | Count, broken, anchor quality |
-| Site Health | 10% | Domain age, SSL, DNS/SPF/DMARC/MX, robots.txt, sitemap |
+| Site Health | 10% | SSL, robots.txt, sitemap, HTTP/2, security headers (SPF/DMARC/MX are collected but informational only, they do not affect the score; domain age is informational context) |
 | Advanced | 8% | Schema, mobile, social, hreflang |
 | Headings | 8% | H1 presence, hierarchy |
 | Images | 7% | Alt text coverage |

@@ -21,13 +21,29 @@ prior standalone Streamlit SEO audit tool ported in on top.
 ## Key directories/files
 - `app/`: Next.js pages: dashboard (`/`), **`technical-audit`** (single URL,
   sitemap, crawl, or CSV-paste multi-input audit, formerly `new-audit`),
-  results (domain-grouped list), detail (per-URL drill-down), export, settings.
+  results (domain-grouped list), detail (per-URL drill-down), settings.
   The former standalone `links`, `headings`, and `performance` pages are folded
   into `app/detail/page.tsx` as tabs backed by `components/detail/LinksView.tsx`,
-  `HeadingsView.tsx`, and `PerformanceView.tsx`. Nav is 5 items: results and
-  detail are one section (`/detail` highlights "Results", see
-  `resolveActiveHref` in `components/AppShell.tsx`); the list routes to the
-  detail via `setSelectedUrlIndex` + `router.push("/detail")`.
+  `HeadingsView.tsx`, and `PerformanceView.tsx`. Report export is NOT a page: it
+  is an action bar (`components/ExportBar.tsx`) on the Results page (POSTs to
+  `api/export.py`); the old `app/export/page.tsx` was removed. Nav is 4 items
+  (Dashboard, Technical Audit, Results, Settings): results and detail are one
+  section (`/detail` highlights "Results", see `resolveActiveHref` in
+  `components/AppShell.tsx`); the list routes to the detail via
+  `setSelectedUrlIndex` + `router.push("/detail")`.
+- **Fix-difficulty labels:** every issue carries an `effort` field (Low/Medium/
+  High) from `modules/technical_checks.py::_issue` and `modules/auditor.py`.
+  `lib/difficulty.ts` maps that to Easy/Medium/Hard (keyword fallback when
+  `effort` is absent); surfaced via `DifficultyBadge` (in `components/ui.tsx`,
+  wired into `IssueRow`), a "Fix effort" column on the Results list, and a
+  rollup on the detail header. Do NOT re-derive difficulty ad hoc; use
+  `fixDifficulty`/`difficultyBreakdown`.
+- **Email-DNS checks are informational, not scored.** SPF / DMARC / MX (and the
+  `dns_health_check` summary) are email-deliverability records, not SEO ranking
+  signals. `check_dns_health` collects the records but emits NO scored issues;
+  the checklist reports them with status `"info"` (a 4th `ChecklistStatus`,
+  excluded from the pass/warning/fail summary, which now also carries an `info`
+  count). Do NOT reintroduce them as warnings/failures or into `all_issues`.
 - `api/audit.py`: runs a full audit for one URL, returns `modules.auditor.audit_url()` almost verbatim
 - `api/sitemap.py`: resolves a sitemap (or bare domain) to a URL list for the
   sitewide Technical Audit; see "Sitewide/bulk audit architecture" below

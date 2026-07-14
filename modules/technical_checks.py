@@ -341,28 +341,18 @@ def check_dns_health(url: str) -> dict:
         dmarc_records = [r for r in dmarc_f.result() if r.startswith("v=DMARC1")]
         mx = mx_f.result()
 
-    if not spf_records:
-        issues.append(_issue("No SPF Record", "Site Health", "Medium",
-            "Add a SPF TXT record (v=spf1 ...) to reduce email spoofing risk on your domain.",
-            impact_score=4, effort="Low"))
-    if not dmarc_records:
-        issues.append(_issue("No DMARC Record", "Site Health", "Medium",
-            "Add a DMARC TXT record at _dmarc.<domain> to protect against email spoofing.",
-            impact_score=4, effort="Low"))
-    elif "p=reject" not in dmarc_records[0] and "p=quarantine" not in dmarc_records[0]:
-        issues.append(_issue("DMARC Policy Set to 'none'", "Site Health", "Low",
-            "Tighten the DMARC policy to 'quarantine' or 'reject' once SPF/DKIM alignment is confirmed.",
-            impact_score=2, effort="Low"))
-    if not mx:
-        issues.append(_issue("No MX Records", "Site Health", "Low",
-            "Add MX records if this domain should receive email.",
-            impact_score=2, effort="Low"))
+    # SPF / DMARC / MX are email-deliverability DNS records, not search-ranking
+    # signals: a missing SPF record does not hurt how a page ranks. We therefore
+    # collect the records for informational display (surfaced as "info" checklist
+    # items) but intentionally emit NO scored issues here, so email posture never
+    # penalizes a site's SEO score. `issues` stays empty by design.
 
     return {
         "available": True,
         "spf": spf_records[0][:120] if spf_records else None,
         "dmarc": dmarc_records[0][:120] if dmarc_records else None,
         "mx": mx[:5],
+        "informational": True,
         "issues": issues,
     }
 

@@ -254,20 +254,22 @@ def build_technical_audit_checklist(result: dict) -> dict:
     checks.append(_item("security_headers_check", "Security headers present", "site_health",
         sec_status, f"{present}/{len(security_flags)} present"))
 
+    # SPF / DMARC / MX are email-deliverability records, not SEO ranking signals.
+    # They are reported as "info" (never warning/fail) so they show the data but
+    # do not count toward the pass/warning/fail summary or the SEO score.
     dns = site_health.get("dns", {})
     checks.append(_item("spf_check", "SPF record configured", "site_health",
-        "warning" if not dns.get("spf") else "pass", dns.get("spf") or "Missing"))
+        "info", dns.get("spf") or "Not set (informational only)"))
     checks.append(_item("dmarc_check", "DMARC record configured", "site_health",
-        "warning" if not dns.get("dmarc") else "pass", dns.get("dmarc") or "Missing"))
+        "info", dns.get("dmarc") or "Not set (informational only)"))
     checks.append(_item("mx_records_check", "MX records configured", "site_health",
-        "warning" if not dns.get("mx") else "pass", ", ".join(dns.get("mx", [])[:2]) or "Missing"))
+        "info", ", ".join(dns.get("mx", [])[:2]) or "Not set (informational only)"))
 
     checks.append(_item("favicon_check", "Favicon present", "site_health",
         "warning" if not advanced.get("has_favicon") else "pass", ""))
 
-    dns_all_ok = bool(dns.get("spf") and dns.get("dmarc") and dns.get("mx"))
     checks.append(_item("dns_health_check", "Overall DNS/email health", "site_health",
-        "pass" if dns_all_ok else "warning", ""))
+        "info", "Informational only, does not affect SEO score"))
 
     www_redirect = site_health.get("www_redirect", {})
     checks.append(_item("www_redirect_check", "www/non-www consolidated", "site_health",
@@ -286,9 +288,12 @@ def build_technical_audit_checklist(result: dict) -> dict:
     passed = sum(1 for c in checks if c["status"] == "pass")
     warned = sum(1 for c in checks if c["status"] == "warning")
     failed = sum(1 for c in checks if c["status"] == "fail")
+    info = sum(1 for c in checks if c["status"] == "info")
 
     return {
         "groups": groups,
         "checks": checks,
-        "summary": {"total": total, "pass": passed, "warning": warned, "fail": failed},
+        # `info` items (email-DNS) are excluded from pass/warning/fail by design,
+        # so total == pass + warning + fail + info.
+        "summary": {"total": total, "pass": passed, "warning": warned, "fail": failed, "info": info},
     }

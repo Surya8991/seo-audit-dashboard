@@ -133,15 +133,26 @@ def test_no_security_headers_is_fail_partial_is_warning():
     assert _find(build_technical_audit_checklist(result), "security_headers_check")["status"] == "warning"
 
 
-def test_missing_spf_dmarc_mx_are_warnings_not_failures():
+def test_email_dns_checks_are_informational_not_scored():
+    # SPF/DMARC/MX are email-deliverability records, not SEO ranking signals, so
+    # they are reported as "info" (never pass/warning/fail) regardless of value
+    # and are excluded from the pass/warning/fail summary.
     result = _base_result()
     result["site_health"]["dns"] = {"spf": None, "dmarc": None, "mx": []}
     checklist = build_technical_audit_checklist(result)
-    assert _find(checklist, "spf_check")["status"] == "warning"
-    assert _find(checklist, "dmarc_check")["status"] == "warning"
-    assert _find(checklist, "mx_records_check")["status"] == "warning"
-    # DNS is informational/optional: never a hard failure
-    assert _find(checklist, "dns_health_check")["status"] in ("pass", "warning")
+    for cid in ("spf_check", "dmarc_check", "mx_records_check", "dns_health_check"):
+        assert _find(checklist, cid)["status"] == "info"
+
+    # Even when the records ARE present, they stay informational (not "pass").
+    result["site_health"]["dns"] = {"spf": "v=spf1 ...", "dmarc": "v=DMARC1; p=reject", "mx": ["mx1.example.com"]}
+    checklist = build_technical_audit_checklist(result)
+    for cid in ("spf_check", "dmarc_check", "mx_records_check", "dns_health_check"):
+        assert _find(checklist, cid)["status"] == "info"
+
+    # Summary reconciles: total == pass + warning + fail + info.
+    s = checklist["summary"]
+    assert s["total"] == s["pass"] + s["warning"] + s["fail"] + s["info"]
+    assert s["info"] >= 4
 
 
 def test_missing_hreflang_is_pass_not_penalised():
