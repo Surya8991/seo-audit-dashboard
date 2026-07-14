@@ -184,6 +184,26 @@ sys.path shim. Live tests (`test_live_edstellar_sitemap`,
 Edstellar sitemap/pages and take 30+ seconds. Opt in with `RUN_LIVE_TESTS=1`.
 
 ## Agent notes / gotchas
+- **SSRF: any new outbound fetch of a user/target-influenced URL must go
+  through the guards.** The app audits arbitrary user-supplied URLs, so
+  `modules/auditor.py::validate_audit_url` (blocks private/reserved IPs and
+  hostnames that resolve to them) and `modules/auditor.py::safe_get` (follows
+  redirects manually, re-validating every hop, so a public URL that 301s to an
+  internal/metadata host is blocked mid-chain) are the guards. `fetch_page`
+  uses `safe_get`. Callers that fetch URLs derived from page content or a
+  target's robots.txt/sitemap (`link_auditor.validate_url`,
+  `crawler._fetch_sitemap_locs`) call `validate_audit_url` first. Redirect
+  targets in `technical_checks.py` cross-host followers are NOT yet
+  re-validated (they always start from the already-validated audit domain, so
+  lower risk — see PROJECT_LOG Session 10 residuals). Covered by
+  `tests/test_ssrf.py`.
+- **`all_issues` aggregation excludes the legacy `headings` and `images`
+  blocks** (`auditor.py`): `heading_detail`/`image_detail` are the thorough
+  versions scoring uses, and including both would double-count. If you add a
+  new check module, add its key to that aggregation list AND make sure its
+  issue `category` is mapped in `scoring.py`/`aggregate.ts` `THEMES` (an
+  unmapped category silently lands in the "Other" bucket — that's how the
+  "Image SEO" issues were getting lost).
 - `lib/crawl/chunkedRunner.ts::runChunked`'s optional `resumeFrom` param
   (`{succeeded, failed, startedAt}`) exists because a prior version reset
   succeeded/failed to 0 on every resume, silently showing only the resumed
