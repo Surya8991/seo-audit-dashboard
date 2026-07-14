@@ -31,6 +31,14 @@ prior standalone Streamlit SEO audit tool ported in on top.
   section (`/detail` highlights "Results", see `resolveActiveHref` in
   `components/AppShell.tsx`); the list routes to the detail via
   `setSelectedUrlIndex` + `router.push("/detail")`.
+- **Site health grade:** `lib/siteScore.ts` (`siteScore`/`healthGrade`/
+  `gradeColor`) computes an Ahrefs-style site health score (percent of audited
+  pages with zero Critical/High issue) plus an A-F letter grade, surfaced as a
+  grade ring on the Results "Sitewide Summary" card. Ported from
+  `modules/site_scoring.py` on `origin/venkataramana-work` (that Python module
+  was NOT copied in: it expects a crawl `Job` store we do not run; results live
+  client-side, so the port is TypeScript). Distinct from the per-page weighted
+  SEO score in `lib/scoring.ts`.
 - **Fix-difficulty labels:** every issue carries an `effort` field (Low/Medium/
   High) from `modules/technical_checks.py::_issue` and `modules/auditor.py`.
   `lib/difficulty.ts` maps that to Easy/Medium/Hard (keyword fallback when

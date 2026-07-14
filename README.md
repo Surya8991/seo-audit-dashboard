@@ -76,6 +76,7 @@ summary from this project's standalone Streamlit SEO audit tool ported in as
 | Feature | Details |
 |---|---|
 | **SEO Health Score** | Weighted 0–100 score across 11 categories |
+| **Site Health Grade** | Ahrefs-style A–F grade on the Results page: the percentage of audited pages with zero Critical/High issues (distinct from the per-page score) |
 | **Impact Score** | Each issue rated 1–10 (ranking importance) |
 | **Fix Difficulty** | Every issue is labelled Easy / Medium / Hard (from its Low/Medium/High effort). Shown as a badge per issue, a "Fix effort" column on the Results list, and an Easy/Medium/Hard rollup on the detail header, so you can triage by how much work each fix takes |
 | **Top Issues by Impact** | Priority-ranked recommendations, fix high-impact first |
