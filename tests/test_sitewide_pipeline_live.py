@@ -17,7 +17,7 @@ from modules.sitemap_extractor import extract_sitemap_urls
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("RUN_LIVE_TESTS") != "1",
-    reason="live network test — set RUN_LIVE_TESTS=1 to run",
+    reason="live network test: set RUN_LIVE_TESTS=1 to run",
 )
 
 

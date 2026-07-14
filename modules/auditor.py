@@ -1,4 +1,4 @@
-"""Core URL audit engine — fetches pages and runs all SEO checks."""
+"""Core URL audit engine: fetches pages and runs all SEO checks."""
 
 import ipaddress
 import re
@@ -33,7 +33,7 @@ def validate_audit_url(url: str) -> tuple[bool, str]:
             if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
                 return False, "Private or reserved IP addresses are not allowed."
         except ValueError:
-            pass  # hostname, not raw IP — allow
+            pass  # hostname, not raw IP: allow
         return True, ""
     except Exception:
         return False, "Invalid URL format."
@@ -119,9 +119,9 @@ def fetch_page(url):
         except Exception as e:
             return {"success": False, "error": f"SSL Error: {e}", "status_code": 0}
     except requests.exceptions.Timeout:
-        return {"success": False, "error": "Request timed out (20s) — check the URL is accessible.", "status_code": 0}
+        return {"success": False, "error": "Request timed out (20s). Check the URL is accessible.", "status_code": 0}
     except requests.exceptions.ConnectionError:
-        return {"success": False, "error": "Connection failed — verify the URL and network access.", "status_code": 0}
+        return {"success": False, "error": "Connection failed. Verify the URL and network access.", "status_code": 0}
     except Exception as e:
         return {"success": False, "error": f"Unexpected error: {type(e).__name__}: {e}", "status_code": 0}
 
@@ -212,7 +212,7 @@ def analyze_headings(soup):
             "Add H2 tags to structure your content and improve readability.",
             impact_score=4, effort="Low"))
 
-    # Heading hierarchy check — detect skipped levels
+    # Heading hierarchy check: detect skipped levels
     all_headings = []
     for tag in soup.find_all(re.compile(r"^h[1-6]$")):
         level = int(tag.name[1])
@@ -247,7 +247,7 @@ def analyze_canonical(soup, url):
             impact_score=5, effort="Low"))
     elif len(canonical_tags) > 1:
         issues.append(_issue(f"Multiple Canonical Tags ({len(canonical_tags)})", "Canonical", "Critical",
-            "Remove duplicate canonical tags — only one should exist per page.",
+            "Remove duplicate canonical tags: only one should exist per page.",
             impact_score=8, effort="Low"))
     else:
         href = canonical_tags[0].get("href", "").strip()
@@ -292,10 +292,10 @@ def analyze_indexability(soup, http_headers=None):
                 impact_score=10, effort="Low"))
         if "nofollow" in tokens:
             issues.append(_issue("Meta Robots: Nofollow Active", "Indexability", "Warning",
-                "Review whether nofollow on meta robots is intentional — it prevents link equity flow.",
+                "Review whether nofollow on meta robots is intentional: it prevents link equity flow.",
                 impact_score=5, effort="Low"))
 
-    # X-Robots-Tag response header — noindex is already flagged by
+    # X-Robots-Tag response header: noindex is already flagged by
     # modules/advanced_checks.py::analyze_http_headers; only add the
     # nofollow case here (not covered there) to avoid double-counting.
     headers = {k.lower(): v for k, v in (http_headers or {}).items()}
@@ -357,7 +357,7 @@ def analyze_content(soup, html: str = "", base_url: str = ""):
         tag.decompose()
 
     text = soup_copy.get_text(separator=" ")
-    # Count all tokens of 2+ non-whitespace chars — supports multilingual content
+    # Count all tokens of 2+ non-whitespace chars: supports multilingual content
     words = [w for w in text.split() if len(w) >= 2]
     word_count   = len(words)
     reading_time = round(word_count / 200, 1)
@@ -455,7 +455,7 @@ def analyze_redirect_chain(redirect_history):
         issues.append(_issue(
             f"Redirect Chain Detected ({len(redirect_history)} hops)",
             "Redirects", "Warning",
-            "Fix redirect chains — each hop wastes crawl budget and dilutes link equity. Link directly to the final URL.",
+            "Fix redirect chains: each hop wastes crawl budget and dilutes link equity. Link directly to the final URL.",
             impact_score=6, effort="Medium"))
     return {
         "chain_length": len(redirect_history),
@@ -483,7 +483,7 @@ def detect_page_type(url, soup):
 
 def audit_url(url, audit_type="auto", check_links=True, validate_links=False,
               fetch_pagespeed=False, psi_api_key=None, prefetched=None):
-    # SSRF protection — block private/internal URLs before making any outbound request
+    # SSRF protection: block private/internal URLs before making any outbound request
     ok, ssrf_msg = validate_audit_url(url)
     if not ok:
         return {
@@ -612,7 +612,7 @@ def audit_url(url, audit_type="auto", check_links=True, validate_links=False,
 
     # Site-health checks: domain age, SSL, DNS/SPF/DMARC/MX, robots.txt,
     # sitemap.xml, readability, content freshness, canonical loops, www
-    # redirect consistency, HTTP/2 — run concurrently, independent of the page fetch above.
+    # redirect consistency, HTTP/2: run concurrently, independent of the page fetch above.
     from modules.technical_checks import analyze_site_health
     result["site_health"] = analyze_site_health(
         url, soup=soup, http_headers=http_headers, page_text=result.get("_soup_text", "")
@@ -637,7 +637,7 @@ def audit_url(url, audit_type="auto", check_links=True, validate_links=False,
         result["blog_audit"] = audit_blog_page(soup, url)
 
     all_issues = []
-    # "headings" is intentionally omitted — heading_detail covers the same checks
+    # "headings" is intentionally omitted: heading_detail covers the same checks
     # more thoroughly, and including both would double-count heading issues.
     for key in ["metadata", "canonical", "indexability", "url_structure",
                 "content", "images", "heading_detail", "image_detail",

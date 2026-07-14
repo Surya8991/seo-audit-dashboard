@@ -163,7 +163,7 @@ def _build_tree_html(headings):
             if not stack or stack[-1] != level:
                 open_level(level)
         else:
-            # Same level — ensure list is open
+            # Same level: ensure list is open
             if not stack or stack[-1] != level:
                 open_level(level)
 
@@ -233,7 +233,7 @@ def _build_issues(headings, counts, violations, empty_headings, duplicate_headin
                 "effort": "Low",
             })
 
-    # Skipped heading levels — one issue per violation
+    # Skipped heading levels: one issue per violation
     for v in violations:
         issues.append({
             "issue": (
@@ -256,7 +256,7 @@ def _build_issues(headings, counts, violations, empty_headings, duplicate_headin
             "issue": f"Empty heading detected ({len(empty_headings)} found)",
             "category": "Heading Structure",
             "severity": "Medium",
-            "recommendation": "Remove or fill empty heading tags — they confuse screen readers and crawlers.",
+            "recommendation": "Remove or fill empty heading tags: they confuse screen readers and crawlers.",
             "impact_score": 6,
             "effort": "Low",
         })

@@ -28,6 +28,7 @@ def flatten(result):
     idx = result.get("indexability", {})
     il = result.get("internal_links", {})
     el = result.get("external_links", {})
+    checklist_summary = (result.get("technical_audit_checklist") or {}).get("summary", {}) or {}
 
     return {
         "URL": result.get("url", ""),
@@ -59,6 +60,9 @@ def flatten(result):
         "Broken Internal": il.get("broken_count", ""),
         "External Links": el.get("total_links", ""),
         "Broken External": el.get("broken_count", ""),
+        "Checklist Passed": checklist_summary.get("pass", ""),
+        "Checklist Warnings": checklist_summary.get("warning", ""),
+        "Checklist Failed": checklist_summary.get("fail", ""),
         "Fetch Error": result.get("fetch_error", ""),
     }
 
@@ -120,11 +124,27 @@ def generate_excel(results):
             })
     links_df = pd.DataFrame(link_rows) if link_rows else pd.DataFrame()
 
+    checklist_rows = []
+    for r in results:
+        url = r.get("url", "")
+        checklist = r.get("technical_audit_checklist", {}) or {}
+        for c in checklist.get("checks", []):
+            checklist_rows.append({
+                "URL": url,
+                "Group": (c.get("group", "") or "").replace("_", " ").title(),
+                "Check": c.get("label", ""),
+                "Status": (c.get("status", "") or "").title(),
+                "Detail": c.get("detail", ""),
+            })
+    checklist_df = pd.DataFrame(checklist_rows) if checklist_rows else pd.DataFrame()
+
     with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
         summary_df.to_excel(writer, sheet_name="Audit Summary", index=False)
         issues_df.to_excel(writer, sheet_name="All Issues", index=False)
         if not links_df.empty:
             links_df.to_excel(writer, sheet_name="Link Audit", index=False)
+        if not checklist_df.empty:
+            checklist_df.to_excel(writer, sheet_name="Technical Checklist", index=False)
 
         wb = writer.book
 
@@ -167,6 +187,20 @@ def generate_excel(results):
                 if fmt:
                     wi.write(ri, sev_col, sv, fmt)
 
+        # Format checklist sheet
+        if not checklist_df.empty:
+            wc = writer.sheets["Technical Checklist"]
+            status_fmts = {"Pass": green, "Warning": amber, "Fail": red}
+            for ci, cn in enumerate(checklist_df.columns):
+                wc.write(0, ci, cn, hdr_fmt)
+                wc.set_column(ci, ci, 32 if cn != "Status" else 12)
+
+            status_col = list(checklist_df.columns).index("Status")
+            for ri, st in enumerate(checklist_df["Status"], 1):
+                fmt = status_fmts.get(st)
+                if fmt:
+                    wc.write(ri, status_col, st, fmt)
+
     buf.seek(0)
     return buf.getvalue()
 
@@ -200,6 +234,12 @@ def generate_pdf(results):
         healthy = sum(1 for r in results if r.get("seo_score", 0) >= 75)
         issues_total = sum(len(r.get("all_issues", [])) for r in results)
 
+        checklist_summaries = [
+            (r.get("technical_audit_checklist") or {}).get("summary")
+            for r in results
+            if (r.get("technical_audit_checklist") or {}).get("summary")
+        ]
+
         pdf.set_font("Helvetica", "B", 11)
         pdf.set_fill_color(235, 245, 255)
         pdf.cell(0, 8, "Executive Summary", ln=True, fill=True)
@@ -211,11 +251,21 @@ def generate_pdf(results):
         pdf.cell(0, 6, f"Healthy URLs (Score >= 75): {healthy}", ln=True)
         pdf.cell(0, 6, f"Critical URLs (Score < 50): {critical}", ln=True)
         pdf.cell(0, 6, f"Total Issues Found: {issues_total}", ln=True)
+        if checklist_summaries:
+            avg_pass = sum(s.get("pass", 0) for s in checklist_summaries) / len(checklist_summaries)
+            avg_total = sum(s.get("total", 0) for s in checklist_summaries) / len(checklist_summaries)
+            pdf.cell(0, 6, f"Avg. Technical Audit Checklist: {avg_pass:.1f}/{avg_total:.0f} checks passed", ln=True)
         pdf.ln(6)
 
         # Results table
-        col_w = [72, 18, 18, 18, 54]
-        headers = ["URL", "Score", "HTTP", "Issues", "Top Issue"]
+        col_w = [58, 16, 16, 16, 24, 46]
+        headers = ["URL", "Score", "HTTP", "Issues", "Checks", "Top Issue"]
+
+        pdf.set_font("Helvetica", "I", 7)
+        pdf.set_text_color(90, 90, 90)
+        pdf.cell(0, 5, "Checks column = Technical Audit Checklist Pass / Warning / Fail counts (of 35).", ln=True)
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(1)
 
         pdf.set_font("Helvetica", "B", 8)
         pdf.set_fill_color(30, 58, 95)
@@ -227,14 +277,19 @@ def generate_pdf(results):
         pdf.set_font("Helvetica", "", 7)
 
         for r in results[:150]:
-            url = (r.get("url", ""))[:65]
+            url = (r.get("url", ""))[:48]
             sc = r.get("seo_score", 0)
             status = str(r.get("status_code", ""))
             n_issues = len(r.get("all_issues", []))
             top = next(
-                (i.get("issue", "")[:50] for i in r.get("all_issues", [])
+                (i.get("issue", "")[:40] for i in r.get("all_issues", [])
                  if i.get("severity") == "Critical"),
                 (r.get("all_issues", [{}])[0].get("issue", "") if r.get("all_issues") else ""),
+            )
+            cl_summary = (r.get("technical_audit_checklist") or {}).get("summary") or {}
+            checks_str = (
+                f"{cl_summary.get('pass', 0)}/{cl_summary.get('warning', 0)}/{cl_summary.get('fail', 0)}"
+                if cl_summary else "N/A"
             )
 
             if sc >= 90:
@@ -251,7 +306,8 @@ def generate_pdf(results):
             pdf.cell(col_w[1], 6, str(sc), border=1, align="C", fill=fill)
             pdf.cell(col_w[2], 6, status, border=1, align="C", fill=fill)
             pdf.cell(col_w[3], 6, str(n_issues), border=1, align="C", fill=fill)
-            pdf.cell(col_w[4], 6, top[:50], border=1, fill=fill)
+            pdf.cell(col_w[4], 6, checks_str, border=1, align="C", fill=fill)
+            pdf.cell(col_w[5], 6, top[:40], border=1, fill=fill)
             pdf.ln()
 
         return bytes(pdf.output())
@@ -267,5 +323,12 @@ def generate_pdf(results):
             lines.append(f"URL: {r.get('url', '')}")
             lines.append(f"  SEO Score: {r.get('seo_score', 0)}")
             lines.append(f"  Issues: {len(r.get('all_issues', []))}")
+            cl_summary = (r.get("technical_audit_checklist") or {}).get("summary") or {}
+            if cl_summary:
+                lines.append(
+                    f"  Technical Audit Checklist: {cl_summary.get('pass', 0)} passed, "
+                    f"{cl_summary.get('warning', 0)} warnings, {cl_summary.get('fail', 0)} failed "
+                    f"(of {cl_summary.get('total', 0)})"
+                )
             lines.append("-" * 40)
         return "\n".join(lines).encode("utf-8")

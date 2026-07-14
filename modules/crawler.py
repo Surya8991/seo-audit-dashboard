@@ -1,4 +1,4 @@
-"""Site-wide crawler — BFS link discovery + per-page audit.
+"""Site-wide crawler: BFS link discovery + per-page audit.
 
 Modeled on the crawl-configuration patterns shared by Semrush, Ahrefs Site
 Audit, and Screaming Frog: seed selection (homepage / sitemap / URL list),
@@ -8,8 +8,8 @@ ignore-but-report).
 
 Phase 1 scope: this crawl runs synchronously in-process, bounded by
 max_pages/max_depth so it fits inside a single request. A background job
-queue + persistence layer (for larger, resumable crawls) is a later phase —
-see the "Scope notes" in README.md.
+queue + persistence layer (for larger, resumable crawls) is a later phase.
+See the "Scope notes" in README.md.
 """
 
 import re

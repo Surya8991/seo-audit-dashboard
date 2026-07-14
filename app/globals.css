@@ -3,7 +3,7 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Design tokens — indigo/violet brand, light default + dark override */
+/* Design tokens: indigo/violet brand, light default + dark override */
 :root {
   --seo-app-bg: #F5F7FB;
   --seo-card-bg: #FFFFFF;

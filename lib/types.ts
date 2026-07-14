@@ -29,7 +29,7 @@ export interface TechnicalAuditChecklist {
 
 // The Python /api/audit endpoint returns the full audit_url() result almost
 // verbatim (see modules/auditor.py). Nested category dicts are intentionally
-// left loosely typed here — they're rendered read-only in the UI and their
+// left loosely typed here: they're rendered read-only in the UI and their
 // exact shape is defined in the Python modules, not duplicated here.
 export interface AuditResult {
   url: string;

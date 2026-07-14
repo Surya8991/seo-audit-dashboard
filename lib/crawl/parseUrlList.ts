@@ -1,5 +1,5 @@
 // Client-side URL-list parsing for the Technical Audit "CSV / Paste URLs" mode.
-// Parsing happens entirely in the browser — no upload endpoint, no server
+// Parsing happens entirely in the browser, no upload endpoint, no server
 // storage, no CSV-formula-injection surface (per PROJECT_LOG.md).
 //
 // Accepts: pasted newline/comma/whitespace-separated URLs, CSV/TSV text with or
@@ -92,7 +92,7 @@ export function parseUrlList(input: string): ParsedUrlList {
       continue;
     }
 
-    // No known column — scrape any http(s) cell on the line.
+    // No known column, scrape any http(s) cell on the line.
     let foundOnLine = false;
     for (const cell of cells) {
       const u = toUrl(cell);

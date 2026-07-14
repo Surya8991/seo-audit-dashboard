@@ -132,9 +132,9 @@ def _fetch_size(url, referer=None):
     {"reachable": bool, "status_code": int|None, "error": str|None}.
 
     Strategy:
-    1. HEAD — fast, no body download.
-    2. Range GET bytes=0-1 — extracts total from Content-Range header.
-    3. Streaming GET — reads only response headers, no body download.
+    1. HEAD: fast, no body download.
+    2. Range GET bytes=0-1: extracts total from Content-Range header.
+    3. Streaming GET: reads only response headers, no body download.
     """
     if not REQUESTS_AVAILABLE:
         return url, None, {"reachable": None, "status_code": None, "error": "requests unavailable"}
@@ -181,7 +181,7 @@ def _fetch_size(url, referer=None):
         r3 = _get(requests.get, url, timeout=10, allow_redirects=True,
                   headers=hdrs, stream=True)
         r3.close()
-        # Use the LAST attempted status code for reachability — a 200 here
+        # Use the LAST attempted status code for reachability: a 200 here
         # means the image is fine even if size couldn't be determined; a 4xx/5xx
         # across every attempt means the image genuinely doesn't load.
         final_code = r3.status_code
@@ -217,7 +217,7 @@ def _extract_image_data(soup, base_url):
     images = []
 
     for tag in soup.find_all(["img", "source"]):
-        # A <source> tag is only image-related inside <picture> — inside
+        # A <source> tag is only image-related inside <picture>: inside
         # <audio>/<video> it points to audio/video media, not an image.
         if tag.name == "source" and tag.find_parent("picture") is None:
             continue
@@ -291,7 +291,7 @@ def _extract_image_data(soup, base_url):
             "is_in_picture": is_in_picture,
             "naming_quality": nq,
             "file_size_bytes": None,
-            "file_size_label": "—",
+            "file_size_label": "N/A",
             "status_code": None,
             "is_broken": None,
             "fetch_error": None,
@@ -305,7 +305,7 @@ def _extract_image_data(soup, base_url):
 def _mark_lcp_candidate(images):
     """
     Mark the image most likely to be the page's LCP element.
-    SVGs are excluded — browsers never report an SVG as the LCP element.
+    SVGs are excluded: browsers never report an SVG as the LCP element.
     Prefers the largest raster image by pixel area; falls back to the
     first non-SVG HTTP image.
     """
@@ -517,7 +517,7 @@ def _build_issues(summary, check_sizes):
             "issue": f"{n['broken_images']} image(s) fail to load",
             "category": "Image SEO",
             "severity": "Critical",
-            "recommendation": "Fix or remove broken image references — check the URL is correct and the file still exists on the server.",
+            "recommendation": "Fix or remove broken image references: check the URL is correct and the file still exists on the server.",
             "impact_score": 9,
             "effort": "Low",
         })
@@ -568,7 +568,7 @@ def analyze_images_advanced(soup, base_url="", check_sizes=False, max_size_check
     """
     images = _extract_image_data(soup, base_url)
     _mark_lcp_candidate(images)
-    # LCP image must NOT be lazy-loaded — remove that per-image issue for it
+    # LCP image must NOT be lazy-loaded: remove that per-image issue for it
     for img in images:
         if img.get("is_lcp_candidate"):
             img["issues"] = [i for i in img.get("issues", []) if i != "Missing lazy loading"]

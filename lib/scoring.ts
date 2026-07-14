@@ -1,4 +1,4 @@
-// Mirrors modules/scoring.py WEIGHTS — used only to label the score breakdown
+// Mirrors modules/scoring.py WEIGHTS, used only to label the score breakdown
 // bars client-side; the actual score/breakdown values come from the API.
 export const WEIGHTS: Record<string, number> = {
   metadata: 0.16,

@@ -218,7 +218,7 @@ def check_domain_age(url: str) -> dict:
         issues = []
         if age_years < 0.5:
             issues.append(_issue(f"Very New Domain ({age_years} years old)", "Site Health", "Low",
-                "New domains take time to build trust with search engines — this is informational, not a fix.",
+                "New domains take time to build trust with search engines: this is informational, not a fix.",
                 impact_score=2, effort="Low"))
 
         return {
@@ -268,7 +268,7 @@ def check_ssl(url: str) -> dict:
         }
     except ssl.SSLCertVerificationError as exc:
         issues.append(_issue("SSL Certificate Invalid", "Site Health", "Critical",
-            f"Fix the SSL certificate — verification failed: {exc}",
+            f"Fix the SSL certificate: verification failed: {exc}",
             impact_score=10, effort="High"))
         return {"valid": False, "issues": issues}
     except (OSError, ValueError) as exc:
@@ -277,19 +277,19 @@ def check_ssl(url: str) -> dict:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# HTTPS enforcement — does the http:// origin redirect to https://?
+# HTTPS enforcement: does the http:// origin redirect to https://?
 # ════════════════════════════════════════════════════════════════════════════
 
 def check_https_enforcement(url: str) -> dict:
     """Verify the http:// version of this host redirects to https://.
 
     Distinct from check_ssl (which validates the certificate on the URL as
-    requested) — this confirms visitors landing on the insecure origin are
+    requested): this confirms visitors landing on the insecure origin are
     forced onto HTTPS rather than being served content over plain HTTP.
     """
     parsed = urlparse(url)
     if parsed.scheme != "https":
-        # Already flagged elsewhere (check_ssl / analyze_url_structure) — avoid double-counting.
+        # Already flagged elsewhere (check_ssl / analyze_url_structure): avoid double-counting.
         return {"enforced": None, "issues": []}
 
     http_url = f"http://{parsed.netloc}{parsed.path or '/'}"
@@ -307,19 +307,19 @@ def check_https_enforcement(url: str) -> dict:
         "enforced": False,
         "issues": [_issue(
             "HTTP Does Not Redirect to HTTPS", "Site Health", "Critical",
-            f"Add a server-level redirect so http://{parsed.netloc} forces HTTPS — "
+            f"Add a server-level redirect so http://{parsed.netloc} forces HTTPS: "
             "visitors and crawlers can currently reach an insecure version of this site.",
             impact_score=9, effort="Low")],
     }
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# DNS health — SPF / DMARC / MX
+# DNS health: SPF / DMARC / MX
 # ════════════════════════════════════════════════════════════════════════════
 
 def check_dns_health(url: str) -> dict:
     try:
-        import dns.resolver  # noqa: F401 — availability check only
+        import dns.resolver  # noqa: F401 (availability check only)
     except ImportError:
         return {"available": False, "issues": []}
 
@@ -368,7 +368,7 @@ def check_dns_health(url: str) -> dict:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Readability (Flesch-Kincaid via textstat) — reuses already-parsed page text
+# Readability (Flesch-Kincaid via textstat): reuses already-parsed page text
 # ════════════════════════════════════════════════════════════════════════════
 
 def check_readability(text: str) -> dict:
@@ -397,7 +397,7 @@ def check_readability(text: str) -> dict:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Content freshness — reuses already-fetched headers + soup
+# Content freshness: reuses already-fetched headers + soup
 # ════════════════════════════════════════════════════════════════════════════
 
 def check_content_freshness(http_headers: dict, soup) -> dict:
@@ -449,7 +449,7 @@ def check_content_freshness(http_headers: dict, soup) -> dict:
     issues = []
     if age_days > 730:
         issues.append(_issue(f"Content Is ~{age_days // 30} Months Old", "Content", "Warning",
-            "Refresh this content — search engines favour recently updated pages for time-sensitive queries.",
+            "Refresh this content: search engines favour recently updated pages for time-sensitive queries.",
             impact_score=4, effort="Medium"))
 
     return {"available": True, "raw_date": raw_date, "age_days": age_days, "issues": issues}
@@ -474,13 +474,13 @@ def check_canonical_loop(url: str, soup) -> dict:
             canon_url = urljoin(current_url, canon_url)
 
         if canon_url == current_url:
-            return {"chain": visited, "issues": []}  # self-referencing — fine
+            return {"chain": visited, "issues": []}  # self-referencing, fine
 
         if canon_url in visited:
             chain = " → ".join(visited + [canon_url])
             return {"chain": visited + [canon_url], "issues": [_issue(
                 "Canonical Loop Detected", "Canonical", "Critical",
-                f"Break the canonical loop — chain: {chain}",
+                f"Break the canonical loop, chain: {chain}",
                 impact_score=8, effort="Medium")]}
 
         visited.append(canon_url)
@@ -564,7 +564,7 @@ def check_http2(url: str) -> dict:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Aggregate entry point — run every site-health check concurrently
+# Aggregate entry point: run every site-health check concurrently
 # ════════════════════════════════════════════════════════════════════════════
 
 def analyze_site_health(url: str, soup=None, http_headers=None, page_text: str = "") -> dict:

@@ -27,6 +27,17 @@ import {
 
 const PIE_COLORS = ["#10B981", "#D97706", "#DC2626"];
 
+// Recharts tooltips ignore Tailwind classes; CSS variables in inline styles
+// still resolve against the current theme, so this stays light/dark aware.
+const CHART_TOOLTIP_STYLE = {
+  backgroundColor: "var(--seo-card-bg)",
+  border: "1px solid var(--seo-border-strong)",
+  borderRadius: "8px",
+  color: "var(--seo-text)",
+  fontSize: "13px",
+};
+const CHART_TOOLTIP_LABEL_STYLE = { color: "var(--seo-heading)", fontWeight: 600 };
+
 export default function DashboardPage() {
   const { results, lastAuditDate, setNavFilter } = useAudit();
   const router = useRouter();
@@ -118,7 +129,7 @@ export default function DashboardPage() {
                     <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} />
               </PieChart>
             </ResponsiveContainer>
           ) : null}
@@ -131,9 +142,13 @@ export default function DashboardPage() {
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={sevData}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--seo-border)" />
-              <XAxis dataKey="severity" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-              <Tooltip />
+              <XAxis dataKey="severity" tick={{ fontSize: 12, fill: "var(--seo-text-light)" }} />
+              <YAxis tick={{ fontSize: 12, fill: "var(--seo-text-light)" }} allowDecimals={false} />
+              <Tooltip
+                contentStyle={CHART_TOOLTIP_STYLE}
+                labelStyle={CHART_TOOLTIP_LABEL_STYLE}
+                cursor={{ fill: "var(--seo-card-hover)" }}
+              />
               <Bar dataKey="count" fill="var(--seo-accent)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -142,7 +157,7 @@ export default function DashboardPage() {
 
       <Card className="mt-6">
         <h3 className="mb-2 text-sm font-semibold text-[var(--seo-subheading)]">
-          Quick Wins — Top Issues by Impact
+          Quick Wins: Top Issues by Impact
         </h3>
         <div>
           {topIssues.map((issue, i) => (

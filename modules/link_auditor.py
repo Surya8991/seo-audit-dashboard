@@ -7,7 +7,7 @@ from urllib.parse import urlparse, urljoin
 import requests
 from bs4 import BeautifulSoup
 
-# Browser-like headers — avoids 403/999 bot blocks on LinkedIn, McKinsey, etc.
+# Browser-like headers: avoids 403/999 bot blocks on LinkedIn, McKinsey, etc.
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -26,7 +26,7 @@ TIMEOUT = 8
 _session = requests.Session()
 _session.headers.update(HEADERS)
 
-# Sites that always block HEAD/GET with non-standard codes — don't count as "broken"
+# Sites that always block HEAD/GET with non-standard codes: don't count as "broken"
 KNOWN_BLOCKER_DOMAINS = {
     "linkedin.com", "www.linkedin.com",
     "twitter.com", "x.com", "www.twitter.com",
@@ -128,11 +128,11 @@ def status_label(code):
 def link_health(code, domain=""):
     """
     Classify link health:
-      ok       — 2xx
-      redirect — 3xx
-      blocked  — 999, 403 on known social/professional sites
-      broken   — 4xx (not blocked), 5xx, 0 (connection error)
-      unknown  — None (not validated)
+      ok       : 2xx
+      redirect : 3xx
+      blocked  : 999, 403 on known social/professional sites
+      broken   : 4xx (not blocked), 5xx, 0 (connection error)
+      unknown  : None (not validated)
     """
     if code is None:
         return "unknown"
@@ -166,7 +166,7 @@ def classify_link(href, base_url):
 
 
 # Extensions used to tag a page/internal/external link with a more specific
-# link_category than just "page" — purely extension-based, no content sniffing.
+# link_category than just "page": purely extension-based, no content sniffing.
 _DOC_EXTENSIONS = {
     "pdf": "pdf",
     "doc": "download", "docx": "download",
@@ -202,7 +202,7 @@ _LOCATION_SELECTORS = (
 
 def classify_link_location(tag):
     """Walk up the DOM to classify where a link sits: nav / header / footer / sidebar /
-    breadcrumb / body. Heuristic — based on tag names and common class/id naming, not a
+    breadcrumb / body. Heuristic, based on tag names and common class/id naming, not a
     layout-rendering analysis."""
     node = tag
     depth = 0
@@ -230,7 +230,7 @@ def classify_link_location(tag):
 
 
 def parse_special_link_tag(tag, base_url, kind):
-    """Parse mailto: / tel: / #anchor / javascript: links — no HTTP validation applies."""
+    """Parse mailto: / tel: / #anchor / javascript: links: no HTTP validation applies."""
     href = tag.get("href", "").strip()
     anchor = tag.get_text(strip=True) or "[No Text]"
     return {
@@ -324,7 +324,7 @@ def validate_url(url):
             "is_redirect": False,
             "final_url": url,
             "redirect_count": 0,
-            "note": "Skipped — site blocks automated requests",
+            "note": "Skipped: site blocks automated requests",
         }
 
     ssl_error = False
@@ -462,8 +462,8 @@ def audit_links(soup, base_url, validate=False):
 
 # ── Body content link highlighting ────────────────────────────────────────
 
-INTERNAL_LINK_COLOR = "#1D4ED8"   # blue  — matches internal-link brand color elsewhere
-EXTERNAL_LINK_COLOR = "#7C3AED"   # purple — matches external-link brand color elsewhere
+INTERNAL_LINK_COLOR = "#1D4ED8"   # blue, matches internal-link brand color elsewhere
+EXTERNAL_LINK_COLOR = "#7C3AED"   # purple, matches external-link brand color elsewhere
 
 
 def linkify_paragraph_html(p_tag, base_url, max_chars=400):
@@ -574,7 +574,7 @@ def analyze_anchor_text(links):
             "type": "over_optimized",
             "anchor": top_anchor,
             "pct": round(top_cnt / total * 100, 1),
-            "message": f'"{top_anchor}" used on {round(top_cnt/total*100,1)}% of links — may look spammy to Google.',
+            "message": f'"{top_anchor}" used on {round(top_cnt/total*100,1)}% of links: may look spammy to Google.',
             "recommendation": "Vary your anchor text with natural phrases, branded terms, and partial-match keywords.",
         })
 
@@ -594,7 +594,7 @@ def analyze_anchor_text(links):
         opportunities.append({
             "type": "image_no_alt",
             "count": len(img_no_alt),
-            "message": f"{len(img_no_alt)} image link(s) have no alt text — search engines cannot read the anchor.",
+            "message": f"{len(img_no_alt)} image link(s) have no alt text: search engines cannot read the anchor.",
             "recommendation": "Add descriptive alt attributes to all linked images.",
             "links": [l.get("url","") for l in img_no_alt[:10]],
         })
@@ -615,9 +615,9 @@ def analyze_anchor_text(links):
             "count": unique_anchors,
             "message": f"Anchor text diversity: {unique_anchors} unique phrases across {total} links ({diversity}% unique).",
             "recommendation": (
-                "Good diversity — keep varying anchor text."
+                "Good diversity: keep varying anchor text."
                 if diversity > 60 else
-                "Low diversity — try using more unique, contextually relevant phrases per link."
+                "Low diversity: try using more unique, contextually relevant phrases per link."
             ),
             "links": [],
         })
@@ -662,7 +662,7 @@ def get_internal_link_opportunities(results_list):
             "type": "orphan_pages",
             "severity": "High",
             "count": len(orphan_pages),
-            "title": "Orphan Pages — No Internal Links Pointing To Them",
+            "title": "Orphan Pages: No Internal Links Pointing To Them",
             "message": f"{len(orphan_pages)} page(s) have zero internal inbound links from other audited pages.",
             "recommendation": "Link to these pages from relevant content to help search engines discover and crawl them.",
             "pages": orphan_pages[:10],
@@ -673,7 +673,7 @@ def get_internal_link_opportunities(results_list):
             "type": "low_inbound",
             "severity": "Medium",
             "count": len(low_link_pages),
-            "title": "Under-Linked Pages — Fewer Than 3 Internal Inbound Links",
+            "title": "Under-Linked Pages: Fewer Than 3 Internal Inbound Links",
             "message": f"{len(low_link_pages)} page(s) have fewer than 3 internal links pointing to them.",
             "recommendation": "Increase internal links to these pages to distribute link equity and improve crawl priority.",
             "pages": low_link_pages[:10],
@@ -712,7 +712,7 @@ def get_internal_link_opportunities(results_list):
                 "severity": "Critical",
                 "count": len(sources),
                 "title": "Broken Internal Link Target",
-                "message": f"'{target}' is broken — linked from {len(sources)} page(s).",
+                "message": f"'{target}' is broken, linked from {len(sources)} page(s).",
                 "recommendation": "Fix or redirect the broken target URL, or update all links pointing to it.",
                 "pages": sources[:5],
             })
@@ -766,7 +766,7 @@ def _summarize_internal(links):
         issues.append({
             "issue": f"Broken Internal Links ({broken})", "category": "Internal Links",
             "severity": "Critical", "impact_score": 9, "effort": "Low",
-            "recommendation": "Fix or remove all broken internal links immediately — they harm user experience and crawlability.",
+            "recommendation": "Fix or remove all broken internal links immediately: they harm user experience and crawlability.",
         })
     if redirect > 0:
         issues.append({
@@ -827,7 +827,7 @@ def _summarize_external(links):
         issues.append({
             "issue": f"Broken External Links ({broken})", "category": "External Links",
             "severity": "High", "impact_score": 8, "effort": "Low",
-            "recommendation": "Replace or remove all broken external links — they harm user experience and trust signals.",
+            "recommendation": "Replace or remove all broken external links: they harm user experience and trust signals.",
         })
     if miss_noop > 0:
         issues.append({
@@ -839,7 +839,7 @@ def _summarize_external(links):
         issues.append({
             "issue": f"Very High Dofollow External Link Count ({dofollow})", "category": "External Links",
             "severity": "Warning", "impact_score": 4, "effort": "Medium",
-            "recommendation": "Review excessive external dofollow links — add rel='nofollow' for commercial or low-authority destinations.",
+            "recommendation": "Review excessive external dofollow links: add rel='nofollow' for commercial or low-authority destinations.",
         })
     if weak_a > 0:
         issues.append({

@@ -1,4 +1,4 @@
-"""Tests for modules/sitemap_extractor.py — sitemap URL extraction with
+"""Tests for modules/sitemap_extractor.py: sitemap URL extraction with
 sitemap-index recursion, gzip, dedupe, filtering, capping, and SSRF safety.
 Network is mocked; one opt-in live smoke test hits edstellar.com."""
 
@@ -79,7 +79,7 @@ def test_sitemap_index_recursion_and_dedupe(mock_get):
     })
     result = extract_sitemap_urls("https://example.com/sitemap.xml", limit=50)
     assert result["is_index"] is True
-    # /about appears in both children — deduped to one.
+    # /about appears in both children: deduped to one.
     assert result["urls"].count("https://example.com/about") == 1
     assert result["total_found"] == 4  # /, /about, /blog/a, /blog/b
     assert result["sitemaps_crawled"] == 3
@@ -117,7 +117,7 @@ def test_gzipped_sitemap(mock_get):
 @patch("modules.sitemap_extractor.requests.get")
 def test_max_url_cap_clamped(mock_get):
     mock_get.side_effect = _mock_get({"https://example.com/sitemap.xml": URLSET})
-    # Asking for 9999 must clamp to MAX_URL_CAP (200) — here only 4 exist anyway,
+    # Asking for 9999 must clamp to MAX_URL_CAP (200): here only 4 exist anyway,
     # but the returned cap flag must reflect the clamped limit, not 9999.
     result = extract_sitemap_urls("https://example.com/sitemap.xml", limit=9999)
     assert result["capped"] is False
@@ -147,7 +147,7 @@ def test_discover_sitemap_url():
 
 @pytest.mark.skipif(
     os.environ.get("RUN_LIVE_TESTS") != "1",
-    reason="live network test — set RUN_LIVE_TESTS=1 to run",
+    reason="live network test: set RUN_LIVE_TESTS=1 to run",
 )
 def test_live_edstellar_sitemap():
     result = extract_sitemap_urls("https://www.edstellar.com/sitemap.xml", limit=25)

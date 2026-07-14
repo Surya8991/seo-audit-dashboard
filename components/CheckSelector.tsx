@@ -8,7 +8,7 @@ import { useSelectedChecks } from "@/lib/useSelectedChecks";
 
 /**
  * Collapsible panel letting users pick which of the 35 checks to include in
- * the Technical Audit report — mirrors the reference tool's use-case
+ * the Technical Audit report, mirrors the reference tool's use-case
  * check-selection UI. Everything is selected by default.
  */
 export function CheckSelector() {
@@ -80,7 +80,7 @@ export function CheckSelector() {
           })}
 
           <p className="text-xs text-[var(--seo-muted)]">
-            Deselected checks are hidden from the Technical Audit report — every check still runs during
+            Deselected checks are hidden from the Technical Audit report. Every check still runs during
             the audit itself (they&rsquo;re computed together in one page fetch, so skipping some wouldn&rsquo;t
             speed anything up).
           </p>

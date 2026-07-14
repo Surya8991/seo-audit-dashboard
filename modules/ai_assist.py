@@ -1,4 +1,4 @@
-"""Groq AI assistance layer — plain-English audit summary.
+"""Groq AI assistance layer: plain-English audit summary.
 Groq is OpenAI-compatible, fast, and has a generous free tier.
 API key: https://console.groq.com -> API Keys. Env var: GROQ_API_KEY.
 

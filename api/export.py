@@ -29,15 +29,19 @@ class handler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", 0) or 0)
             body = self.rfile.read(length) if length else b"{}"
-            payload = json.loads(body or b"{}")
+            try:
+                payload = json.loads(body or b"{}")
+            except json.JSONDecodeError:
+                _send_json(self, 400, {"error": "request body must be valid JSON"})
+                return
 
             results = payload.get("results") or []
             fmt = payload.get("format", "csv")
             if fmt not in MIME:
                 _send_json(self, 400, {"error": "format must be csv, xlsx, pdf, or json"})
                 return
-            if not results:
-                _send_json(self, 400, {"error": "results is required"})
+            if not isinstance(results, list) or not results:
+                _send_json(self, 400, {"error": "results must be a non-empty list of audit results"})
                 return
 
             if fmt == "csv":

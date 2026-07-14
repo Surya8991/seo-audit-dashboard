@@ -92,7 +92,7 @@ export function AuditProvider({ children }: { children: ReactNode }) {
         setLastAuditDate(new Date().toISOString());
         setSelectedUrlIndex(0);
       },
-      // Batched add for sitewide/bulk audits — one state update + one
+      // Batched add for sitewide/bulk audits: one state update + one
       // localStorage write for N results (vs. N writes via addResult).
       // Upserts by URL: existing URLs are replaced, new ones prepended.
       addResults: (incoming) => {

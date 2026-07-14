@@ -38,7 +38,7 @@ export function ThemeToggle() {
   );
 }
 
-/** Inline script for app/layout.tsx <head> — sets .dark before hydration to avoid a flash of the wrong theme. */
+/** Inline script for app/layout.tsx <head>, sets .dark before hydration to avoid a flash of the wrong theme. */
 export const themeInitScript = `
 (function () {
   try {

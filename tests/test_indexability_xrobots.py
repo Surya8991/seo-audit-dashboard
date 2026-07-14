@@ -1,7 +1,7 @@
 """Tests for modules/auditor.py::analyze_indexability's X-Robots-Tag handling.
 
 modules/advanced_checks.py::analyze_http_headers already flags X-Robots-Tag
-noindex — analyze_indexability must not duplicate that issue, but it does
+noindex: analyze_indexability must not duplicate that issue, but it does
 need to (a) fold noindex into is_indexable and (b) flag the nofollow case,
 which advanced_checks does not cover.
 """
@@ -26,7 +26,7 @@ def test_no_headers_defaults_indexable():
 def test_x_robots_noindex_marks_not_indexable_without_duplicate_issue():
     result = analyze_indexability(_soup(), http_headers={"X-Robots-Tag": "noindex"})
     assert result["is_indexable"] is False
-    # noindex issue is owned by advanced_checks.py — must not appear here too
+    # noindex issue is owned by advanced_checks.py: must not appear here too
     assert not any("noindex" in i["issue"].lower() for i in result["issues"])
 
 

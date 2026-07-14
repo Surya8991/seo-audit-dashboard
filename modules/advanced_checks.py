@@ -49,7 +49,7 @@ def analyze_http_headers(http_headers: dict, url: str) -> dict:
     # Content-Encoding / Compression
     content_encoding = h.get("content-encoding", "identity")
     has_compression = content_encoding.lower() in ("gzip", "br", "deflate", "zstd")
-    # CDN-served cached responses may omit Content-Encoding — check Vary and CF headers
+    # CDN-served cached responses may omit Content-Encoding: check Vary and CF headers
     vary_header = h.get("vary", "").lower()
     cdn_hit = h.get("cf-cache-status", "").upper() in ("HIT", "REVALIDATED")
     cdn_compress_likely = "accept-encoding" in vary_header or cdn_hit
@@ -76,7 +76,7 @@ def analyze_http_headers(http_headers: dict, url: str) -> dict:
             "issue": "Missing HSTS Header (Strict-Transport-Security)",
             "category": "Security",
             "severity": "Medium",
-            "recommendation": "Add 'Strict-Transport-Security: max-age=31536000; includeSubDomains' to enforce HTTPS connections. This is a security best practice and minor trust signal — not a direct Google ranking factor.",
+            "recommendation": "Add 'Strict-Transport-Security: max-age=31536000; includeSubDomains' to enforce HTTPS connections. This is a security best practice and minor trust signal, not a direct Google ranking factor.",
             "impact_score": 4,
             "effort": "Low",
         })
@@ -235,7 +235,7 @@ def analyze_technical_seo(soup, url: str, page_size_bytes: int, response_time: f
             "issue": f"Page Contains {iframe_count} iframe(s)",
             "category": "Technical",
             "severity": "Low",
-            "recommendation": "Avoid iframes where possible — they can slow page load, cause CLS, and may not be crawled by search engines.",
+            "recommendation": "Avoid iframes where possible: they can slow page load, cause CLS, and may not be crawled by search engines.",
             "impact_score": 3,
             "effort": "Medium",
         })
@@ -333,7 +333,7 @@ def analyze_technical_seo(soup, url: str, page_size_bytes: int, response_time: f
 
     if ttfb_ms > 500:
         issues.append({
-            "issue": f"Poor TTFB — Server Response Time {ttfb_ms}ms",
+            "issue": f"Poor TTFB: Server Response Time {ttfb_ms}ms",
             "category": "Performance",
             "severity": "High",
             "recommendation": "Reduce Time to First Byte below 200ms. Investigate server-side rendering time, database queries, and implement server-side caching or a CDN.",

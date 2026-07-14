@@ -58,7 +58,7 @@ export function SeverityBadge({ severity }: { severity: string }) {
   );
 }
 
-/** CSS conic-gradient score circle — replaces flat score badges on results/overview pages. */
+/** CSS conic-gradient score circle, replaces flat score badges on results/overview pages. */
 export function ScoreCircle({
   score,
   size = 72,
@@ -117,7 +117,7 @@ const CHECK_STATUS_STYLE: Record<string, { color: string; bg: string; label: str
   fail: { color: "var(--seo-error)", bg: "var(--seo-error-bg)", label: "Fail" },
 };
 
-/** Pass/Warning/Fail pill — used by the Technical SEO Audit checklist view. */
+/** Pass/Warning/Fail pill, used by the Technical SEO Audit checklist view. */
 export function StatusPill({ status }: { status: string }) {
   const s = CHECK_STATUS_STYLE[status] ?? CHECK_STATUS_STYLE.warning;
   return (

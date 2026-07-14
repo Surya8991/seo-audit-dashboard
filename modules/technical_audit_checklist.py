@@ -1,16 +1,16 @@
-"""Technical SEO Audit use-case checklist — the 35-check composite view ported
+"""Technical SEO Audit use-case checklist: the 35-check composite view ported
 from the standalone Streamlit tool's tools/phase1.py / docs/USECASE_GUIDES.md
 "Technical SEO" use case (crawlability + on-page + site-health, no API key
 required).
 
 Unlike modules/scoring.py (which only ever emits an issue when something is
 wrong), this module produces an explicit pass/warning/fail verdict for every
-one of the 35 named checks — including the ones that already look fine — so
+one of the 35 named checks (including the ones that already look fine), so
 the UI can render the same 35-item checklist the source tool did, grouped by
 crawlability / on-page / site-health.
 
 This is a *read-only view* over data already computed by modules/auditor.py,
-modules/advanced_checks.py, and modules/technical_checks.py — it derives
+modules/advanced_checks.py, and modules/technical_checks.py: it derives
 status from existing result fields and never re-fetches or re-scores.
 """
 

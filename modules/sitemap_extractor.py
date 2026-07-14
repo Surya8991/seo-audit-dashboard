@@ -4,11 +4,11 @@
 URLs but discards the list. This module is the reusable extractor: it fetches a
 sitemap, recurses into sitemap-index files (nested sitemaps), handles gzip,
 SSRF-validates every hop, dedupes, applies include/exclude regex filters, and
-caps the result — returning the actual URL list for the client-side crawl
+caps the result, returning the actual URL list for the client-side crawl
 orchestrator to fan out over.
 
 Design constraints (see PROJECT_LOG.md):
-- Runs inside one Vercel `api/*.py` invocation (60s cap) — sitemap fetching is
+- Runs inside one Vercel `api/*.py` invocation (60s cap): sitemap fetching is
   fast (XML only, no per-page audits), so even a 2,461-URL sitemap is fine.
 - Every fetched URL (root, nested sitemap, redirect target) is SSRF-checked via
   modules.auditor.validate_audit_url before the request is made.
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 _SM_NS = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
 
-# Google's published sitemap ceilings — used as hard safety bounds.
+# Google's published sitemap ceilings, used as hard safety bounds.
 MAX_SITEMAP_URLS = 50_000
 MAX_INDEX_DEPTH = 5          # how deep to recurse nested sitemap indexes
 MAX_SITEMAPS_FETCHED = 200   # backstop against a pathological index fan-out
@@ -59,12 +59,12 @@ def _fetch(url: str) -> bytes:
         raise SitemapError(f"HTTP {resp.status_code}")
 
     content = resp.content
-    # Gzipped sitemaps (.xml.gz) — decompress. Detect by magic bytes or extension.
+    # Gzipped sitemaps (.xml.gz): decompress. Detect by magic bytes or extension.
     if url.lower().endswith(".gz") or content[:2] == b"\x1f\x8b":
         try:
             content = gzip.decompress(content)
         except OSError:
-            pass  # not actually gzipped — use raw bytes
+            pass  # not actually gzipped: use raw bytes
     return content
 
 
@@ -79,7 +79,7 @@ def _parse_xml(content: bytes):
 
         parser = lxml_et.XMLParser(recover=True, resolve_entities=False, no_network=True)
         return lxml_et.fromstring(content, parser=parser), "lxml"
-    except Exception:  # noqa: BLE001 — fall through to regex scrape
+    except Exception:  # noqa: BLE001 (fall through to regex scrape)
         return None, "regex"
 
 

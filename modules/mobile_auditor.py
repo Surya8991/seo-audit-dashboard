@@ -96,7 +96,7 @@ def _check_prevents_zoom(soup):
             "category": "Accessibility",
             "status": "warning",
             "value": content,
-            "detail": "Viewport prevents user zoom — this harms accessibility and is penalised by Google.",
+            "detail": "Viewport prevents user zoom: this harms accessibility and is penalised by Google.",
         }
     return {
         "id": "prevents_zoom",
@@ -192,7 +192,7 @@ def _check_font_size(soup):
         "detail": (
             "No inline font sizes below 12px detected."
             if small == 0
-            else f"{small} element(s) have inline font-size below 12px — too small for mobile."
+            else f"{small} element(s) have inline font-size below 12px, too small for mobile."
         ),
     }
 
@@ -384,7 +384,7 @@ def _check_content_wider_screen(soup):
         "detail": (
             "No elements with inline width > 1000px detected."
             if wide_count == 0
-            else f"{wide_count} block element(s) have inline width > 1000px — may overflow on mobile screens."
+            else f"{wide_count} block element(s) have inline width > 1000px, may overflow on mobile screens."
         ),
     }
 
@@ -403,12 +403,12 @@ def _parse_cwv(technical_seo, pagespeed=None):
     if pagespeed and pagespeed.get("success"):
         ps = pagespeed
         return {
-            "ttfb":       ps.get("ttfb", {"value": "—", "status": "info"}),
-            "lcp":        ps.get("lcp",  {"value": "—", "status": "info"}),
-            "cls":        ps.get("cls",  {"value": "—", "status": "info"}),
-            "fcp":        ps.get("fcp",  {"value": "—", "status": "info"}),
-            "tbt":        ps.get("tbt",  {"value": "—", "status": "info"}),
-            "si":         ps.get("si",   {"value": "—", "status": "info"}),
+            "ttfb":       ps.get("ttfb", {"value": "N/A", "status": "info"}),
+            "lcp":        ps.get("lcp",  {"value": "N/A", "status": "info"}),
+            "cls":        ps.get("cls",  {"value": "N/A", "status": "info"}),
+            "fcp":        ps.get("fcp",  {"value": "N/A", "status": "info"}),
+            "tbt":        ps.get("tbt",  {"value": "N/A", "status": "info"}),
+            "si":         ps.get("si",   {"value": "N/A", "status": "info"}),
             "inp":        ps.get("inp",  {"value": "Not available", "status": "info"}),
             "perf_score": ps.get("performance_score", 0) or 0,
             "source":     "PageSpeed Insights (Lighthouse)",
@@ -450,8 +450,8 @@ def _parse_cwv(technical_seo, pagespeed=None):
         "lcp":  {"value": lcp,  "status": _rating(lcp)},
         "cls":  {"value": cls,  "status": _rating(cls, good_label="Low", warn_label="Medium")},
         "fcp":  {"value": fcp_label, "status": fcp_status},
-        "tbt":  {"value": "—", "status": "info"},
-        "si":   {"value": "—", "status": "info"},
+        "tbt":  {"value": "N/A", "status": "info"},
+        "si":   {"value": "N/A", "status": "info"},
         "inp":  {"value": "Requires Browser Measurement", "status": "info"},
         "perf_score": perf_score,
         "source": "Heuristic Estimate",
@@ -550,7 +550,7 @@ def _build_issues(checks, summary):
             "issue": f"Intrusive popup/modal patterns detected ({count} element(s))",
             "category": "User Experience",
             "severity": "Warning",
-            "recommendation": "Avoid intrusive interstitials that block content on mobile — they can incur a Google penalty.",
+            "recommendation": "Avoid intrusive interstitials that block content on mobile: they can incur a Google penalty.",
             "impact_score": 6,
             "effort": "Medium",
         })
@@ -632,7 +632,7 @@ def analyze_mobile(soup, base_url="", technical_seo=None, advanced_data=None, pa
         _check_content_wider_screen(soup),
     ]
 
-    # Compute score: only count definitive passes (not "info" — inconclusive checks)
+    # Compute score: only count definitive passes (not "info", inconclusive checks)
     decisive_checks = [c for c in raw_checks if c["status"] != "info"]
     passed_checks = sum(1 for c in decisive_checks if c["status"] == "pass")
     total_checks = len(decisive_checks)
@@ -643,7 +643,7 @@ def analyze_mobile(soup, base_url="", technical_seo=None, advanced_data=None, pa
     high_or_critical = any(i["severity"] in ("Critical", "High") for i in issues)
     is_mobile_friendly = not high_or_critical
 
-    # CWV section — real PSI data if available, otherwise heuristics
+    # CWV section: real PSI data if available, otherwise heuristics
     cwv = _parse_cwv(technical_seo, pagespeed=pagespeed)
 
     # Summary counts

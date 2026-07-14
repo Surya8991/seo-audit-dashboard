@@ -24,19 +24,19 @@ const MAX_LIMIT = 200;
 const MODES: { id: InputMode; label: string; icon: string; hint: string; help: string }[] = [
   {
     id: "single", label: "Single URL", icon: "🔗", hint: "Audit one page.",
-    help: "Runs the full 35-check technical audit on exactly one URL you enter. Best when you just want to check one page — a new blog post, a landing page you're about to publish, or a page a client asked about.",
+    help: "Runs the full 35-check technical audit on exactly one URL you enter. Best when you just want to check one page: a new blog post, a landing page you're about to publish, or a page a client asked about.",
   },
   {
     id: "sitemap", label: "Sitemap", icon: "🗺️", hint: "Sitewide audit from sitemap.xml.",
     help: "Reads a site's sitemap.xml (following nested sitemap-index files automatically) and audits a sample of the URLs it finds. Best for a broad health check across an entire site without manually listing every page.",
   },
   {
-    id: "crawl", label: "Crawl from URL", icon: "🕷️", hint: "Discover pages by following links — no sitemap needed.",
+    id: "crawl", label: "Crawl from URL", icon: "🕷️", hint: "Discover pages by following links, no sitemap needed.",
     help: "Starts at one URL and discovers more pages by following its internal links, the same way a search engine crawler would. Best when a site has no sitemap, or you want to check exactly what's actually reachable by clicking around the site.",
   },
   {
     id: "list", label: "CSV / Paste URLs", icon: "📄", hint: "Bulk audit a list of URLs.",
-    help: "Audits a specific list of URLs you provide — paste them one per line, or upload a CSV/TXT file with a url/link column. Best when you already know exactly which pages you want checked (e.g. a client's priority page list).",
+    help: "Audits a specific list of URLs you provide: paste them one per line, or upload a CSV/TXT file with a url/link column. Best when you already know exactly which pages you want checked (e.g. a client's priority page list).",
   },
 ];
 
@@ -454,7 +454,7 @@ export default function TechnicalAuditPage() {
             </label>
             <label className="flex items-center gap-2 text-sm text-[var(--seo-text)]">
               <input type="checkbox" checked={fetchPagespeed} onChange={(e) => setFetchPagespeed(e.target.checked)} />
-              Fetch PageSpeed Insights (much slower — not recommended for bulk)
+              Fetch PageSpeed Insights (much slower, not recommended for bulk)
             </label>
           </div>
 

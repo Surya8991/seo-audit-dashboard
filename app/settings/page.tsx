@@ -34,7 +34,7 @@ export default function SettingsPage() {
         <p className="mb-3 text-sm text-[var(--seo-text-light)]">
           Used for live Core Web Vitals data on the Performance Audit page. Without
           a key, PageSpeed still works via Google&apos;s anonymous quota (100
-          requests/day per IP) — a key raises that to 25,000/day.
+          requests/day per IP). A key raises that to 25,000/day.
         </p>
         <div className="flex items-center gap-2 text-sm">
           <span
@@ -62,7 +62,7 @@ export default function SettingsPage() {
           <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" className="underline">
             console.groq.com/keys
           </a>
-          ). Without a key, audits still run fully — only the AI summary is unavailable.
+          ). Without a key, audits still run fully. Only the AI summary is unavailable.
         </p>
         <div className="mb-3 flex items-center gap-2 text-sm">
           <span
@@ -86,11 +86,11 @@ export default function SettingsPage() {
           value={groqApiKey}
           onChange={(e) => setGroqApiKey(e.target.value)}
           placeholder="gsk_..."
-          className="w-full rounded-lg border border-[var(--seo-border-strong)] bg-white px-3 py-2 text-sm"
+          className="w-full rounded-lg border border-[var(--seo-border-strong)] bg-[var(--seo-card-bg)] px-3 py-2 text-sm text-[var(--seo-text)] outline-none focus:border-[var(--seo-accent)]"
         />
         <p className="mt-2 text-xs text-[var(--seo-muted)]">
           Stored only in this browser&apos;s localStorage and sent directly to the audit
-          summary endpoint — never saved server-side.
+          summary endpoint, never saved server-side.
         </p>
       </Card>
 

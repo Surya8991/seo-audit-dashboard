@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from modules.auditor import validate_audit_url  # noqa: E402
 from modules.crawler import CrawlConfig, crawl_site  # noqa: E402
 
-# Discovery-only cap — mirrors the sitemap/CSV modes' 50 default / 200 max so
+# Discovery-only cap: mirrors the sitemap/CSV modes' 50 default / 200 max so
 # all three bulk input modes behave consistently in the Technical Audit UI.
 DEFAULT_MAX_PAGES = 50
 MAX_MAX_PAGES = 200
@@ -54,7 +54,7 @@ class handler(BaseHTTPRequestHandler):
                     user_agent=payload.get("userAgent", "default"),
                     robots_mode=payload.get("robotsMode", "respect"),
                     max_workers=4,
-                    # Discovery only — the browser fans out per-page audits itself
+                    # Discovery only: the browser fans out per-page audits itself
                     # via lib/crawl/orchestrator.ts, so this stays fast and safely
                     # under the Vercel maxDuration cap even for max_pages=200.
                     run_full_audit=False,

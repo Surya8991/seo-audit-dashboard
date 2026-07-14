@@ -62,7 +62,7 @@ export default function HeadingsPage() {
         <select
           value={selectedIdx}
           onChange={(e) => setSelectedIdx(Number(e.target.value))}
-          className="mb-4 rounded-lg border border-[var(--seo-border-strong)] bg-white px-3 py-2 text-sm"
+          className="mb-4 rounded-lg border border-[var(--seo-border-strong)] bg-[var(--seo-card-bg)] px-3 py-2 text-sm text-[var(--seo-text)]"
         >
           {results.map((res, i) => (
             <option key={res.url} value={i}>

@@ -1,6 +1,6 @@
 # 🔍 SEO Technical Audit Dashboard
 
-An enterprise-grade SEO auditing tool — inspired by SEMrush, Ahrefs, Ubersuggest, and SEO Meta in 1 Click. Built as a Next.js frontend with Python serverless functions on Vercel.
+An enterprise-grade SEO auditing tool, inspired by SEMrush, Ahrefs, Ubersuggest, and SEO Meta in 1 Click. Built as a Next.js frontend with Python serverless functions on Vercel.
 
 Merged from [venkataramana-d/seo-technical-audit-dashboard-main](https://github.com/venkataramana-d/seo-technical-audit-dashboard-main)
 (base: Next.js UI + audit engine) with the site-health checks and Groq AI
@@ -27,7 +27,7 @@ summary from this project's standalone Streamlit SEO audit tool ported in as
 | Feature | Details |
 |---|---|
 | **Unified Link Table** | Internal + external links in one filterable, sortable, paginated view (type, follow, health, HTTP status, link category, DOM location) |
-| **Link Types** | Page, PDF, download, image — plus a separate view for mailto/tel/anchor(#)/JavaScript links |
+| **Link Types** | Page, PDF, download, image, plus a separate view for mailto/tel/anchor(#)/JavaScript links |
 | **DOM Location** | Classifies each link as nav / header / footer / sidebar / breadcrumb / body content |
 | **Body Content Preview** | Renders a page's actual intro/conclusion paragraphs with links highlighted in place |
 | **Per-Link Issue Explanations** | What/why/root cause/SEO impact/user impact/recommended fix (with HTML example) for every broken, redirecting, weak-anchor, or security-gap link |
@@ -105,7 +105,7 @@ npm run dev
 ```
 
 The frontend runs at `http://localhost:3000`. The `/api/*.py` functions only run
-under Vercel's runtime (or `vercel dev`) — plain `next dev` will 404 on API
+under Vercel's runtime (or `vercel dev`); plain `next dev` will 404 on API
 calls, which is expected for local UI-only work.
 
 ### Deploy to Vercel
@@ -114,9 +114,9 @@ calls, which is expected for local UI-only work.
 2. In the Vercel dashboard, import the repo as a project (or connect it to an
    existing empty project via Settings → Git → Connect Repository).
 3. Add environment variables (both optional):
-   - `PSI_API_KEY` — raises the PageSpeed Insights quota; the app works
+   - `PSI_API_KEY`: raises the PageSpeed Insights quota; the app works
      without it via the anonymous quota.
-   - `GROQ_API_KEY` — enables the AI Summary feature by default; without it,
+   - `GROQ_API_KEY`: enables the AI Summary feature by default; without it,
      users can still paste their own free key in Settings.
 4. Deploy. Vercel auto-detects the Next.js frontend and the Python functions
    under `/api`.
@@ -194,7 +194,7 @@ calls, which is expected for local UI-only work.
 This version covers single-URL audits with full detail views, link analysis,
 performance/mobile/image checks, heading analysis, and CSV/Excel/PDF/JSON
 export. Site-wide crawling and a multi-provider API-key vault are not
-implemented — both would need a database and background job queue, which is
+implemented; both would need a database and background job queue, which is
 a real architecture change, not just more frontend work.
 
 ---

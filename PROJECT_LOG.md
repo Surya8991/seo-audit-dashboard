@@ -1,9 +1,9 @@
-# PROJECT_LOG — SEO Technical Audit Dashboard
+# PROJECT_LOG - SEO Technical Audit Dashboard
 
-> **Last updated:** 2026-07-14 · **Session:** 6 · **Version:** v0.5.0 (pre-release)
-> Master log — read in full before touching code. Mirrors the format of the
-> SEO Suite project's `PROJECT_LOG.md` (60-second resume → Do NOT → Current
-> State → Phases → Session History).
+> **Last updated:** 2026-07-14 · **Session:** 7 · **Version:** v0.6.0 (pre-release)
+> Master log, read in full before touching code. Mirrors the format of the
+> SEO Suite project's `PROJECT_LOG.md` (60-second resume, Do NOT, Current
+> State, Phases, Session History).
 
 ---
 
@@ -14,14 +14,14 @@
 2. npm install
 3. python -m venv .venv && .venv\Scripts\activate   # bash: source .venv/Scripts/activate
 4. pip install -r requirements-dev.txt
-5. npm run dev            # frontend only — /api/*.py 404s under plain `next dev`
+5. npm run dev            # frontend only: /api/*.py 404s under plain `next dev`
 6. vercel dev            # full stack incl. Python api/*.py handlers
 7. python -m pytest tests/ -q      # 23 tests green as of v0.2.0
 ```
 
 Architecture in one line: **Next.js 16 + Tailwind 4 frontend, Python
 `api/*.py` serverless handlers (Vercel runtime, 60s cap), NO database, NO
-server state — audit results persist client-side in localStorage only.**
+server state: audit results persist client-side in localStorage only.**
 
 ---
 
@@ -29,19 +29,19 @@ server state — audit results persist client-side in localStorage only.**
 
 - **Do NOT** copy SEO Suite's server-side audit orchestration verbatim. It
   relies on a long-lived Flask process (daemon thread + SSE + on-disk
-  checkpointing to `data/`). This app is stateless serverless — there is no
+  checkpointing to `data/`). This app is stateless serverless: there is no
   long-lived process, no writable disk, no SSE-capable endpoint. Sitewide
   crawls MUST be **client-orchestrated** (browser fans out single-URL calls).
-- **Do NOT** run a whole sitemap crawl inside one `api/*.py` invocation — the
+- **Do NOT** run a whole sitemap crawl inside one `api/*.py` invocation. The
   Vercel function cap is 60s (`vercel.json`). One invocation = one URL.
 - **Do NOT** run domain-level site-health checks (WHOIS, DNS/SPF/DMARC/MX,
   SSL, robots.txt, sitemap, www-redirect, HTTP/2) once per page in a sitewide
-  audit — they are identical for every page on the domain. Compute once per
+  audit; they are identical for every page on the domain. Compute once per
   domain, reuse across pages. (See Phase 2 optimization.)
 - **Do NOT** let `modules/scoring.py` `WEIGHTS`/`THEMES` drift from
-  `lib/scoring.ts`/`lib/aggregate.ts` — mirror both in the same commit.
-- **Do NOT** re-add an X-Robots-Tag `noindex` issue in `analyze_indexability`
-  — it's owned by `advanced_checks.py::analyze_http_headers` (double-count bug).
+  `lib/scoring.ts`/`lib/aggregate.ts`; mirror both in the same commit.
+- **Do NOT** re-add an X-Robots-Tag `noindex` issue in `analyze_indexability`.
+  It's owned by `advanced_checks.py::analyze_http_headers` (double-count bug).
 - **Do NOT** persist any API key server-side. Keys live in localStorage and
   are passed per-request (PSI, Groq pattern).
 - **Do NOT** push without: lint clean, `pytest` green, secret scan, no broken
@@ -56,36 +56,54 @@ server state — audit results persist client-side in localStorage only.**
 - Backend: Python 3, `http.server.BaseHTTPRequestHandler` handlers under `api/`
 - State: localStorage only (`lib/state/AuditContext.tsx`), no DB
 
-### Audit engine — what exists
-- `modules/auditor.py::audit_url()` — full single-URL audit (metadata,
+### Audit engine: what exists
+- `modules/auditor.py::audit_url()`: full single-URL audit (metadata,
   headings, canonical, indexability, url_structure, content, images, advanced,
-  site_health, links, page-type-specific, PSI optional).
-- `modules/auditor.py::audit_urls_bulk()` — ThreadPoolExecutor(8) bulk runner
-  **(EXISTS but UNWIRED — no API route calls it).**
-- `modules/technical_checks.py::analyze_site_health()` — domain-level checks
+  site_health, links, page-type-specific, PSI optional). Accepts
+  `prefetched=None` to reuse a page already fetched by a caller (e.g.
+  `modules/crawler.py`) instead of re-fetching it.
+- `modules/auditor.py::audit_urls_bulk()`: ThreadPoolExecutor(8) bulk runner
+  **(EXISTS but UNWIRED, no API route calls it)**. Bulk audits in this app go
+  through the client orchestrator (one `/api/audit` call per URL) instead.
+- `modules/technical_checks.py::analyze_site_health()`: domain-level checks
   (concurrent). `check_sitemap()` extracts `<loc>` URLs internally **but
-  discards them (returns only `url_count`).**
-- `modules/technical_audit_checklist.py` — 35-check pass/warn/fail checklist
+  discards them (returns only `url_count`)**; `modules/sitemap_extractor.py`
+  is the module that actually returns the extracted URLs.
+- `modules/sitemap_extractor.py` + `api/sitemap.py`: sitemap/sitemap-index
+  URL extraction (depth cap 5, gzip support, SSRF-validated, dedup, cap/filter).
+- `modules/crawler.py` + `api/crawl.py`: BFS link-discovery crawl (no sitemap
+  needed), discovery-only in this app (`run_full_audit=False`).
+- `modules/technical_audit_checklist.py`: 35-check pass/warn/fail checklist
   (crawlability/on_page/site_health), rendered on the detail page's
   "Technical Audit" tab.
 
-### UI — what exists
+### UI: what exists
 - Sidebar shell (`components/AppShell.tsx`), light/dark theme, conic-gradient
-  score circles, pill badges (v0.2.0 SEO-Suite-style rebuild — done).
-- Pages: dashboard, new-audit (single URL only), results (N-result table,
-  already bulk-ready), detail, links, headings, performance, export
-  (bulk-aware), settings. Placeholder pages: `/tools`, `/link-graph`.
+  score circles, pill badges (v0.2.0 SEO-Suite-style rebuild, done). Nav has no
+  placeholder pages left; `/tools` and `/link-graph` were removed in Phase 0.
+- Pages: dashboard, `technical-audit` (Single URL / Sitemap / Crawl-from-URL /
+  CSV-Paste, 4 input modes, all bulk-ready), results (N-result table +
+  sitewide rollup card), detail (incl. the Technical Audit checklist tab),
+  links, headings, performance, export (bulk-aware), settings.
+- `lib/checklistDefs.ts`, `components/HelpDialog.tsx`,
+  `components/ChecklistExplainer.tsx`, `lib/useSelectedChecks.ts` +
+  `components/CheckSelector.tsx`: the plain-English explainer card, per-section
+  help popovers, and the check-selection ("Customize checks") panel on the
+  Technical Audit page, added in Phase 1h.
 
-### Gaps for the multi-input Technical Audit — ALL CLOSED in Session 4
-1. ~~No sitemap **URL extraction** endpoint~~ → `modules/sitemap_extractor.py` + `api/sitemap.py`.
-2. ~~No sitemap-index recursion, no gzip support~~ → both handled (depth cap 5, cycle guard).
-3. ~~No CSV parsing~~ → `lib/crawl/parseUrlList.ts` (client-side, no upload).
-4. ~~`AuditContext.addResult` is single-only~~ → `addResults(results[])` added.
-5. ~~single-URL input only~~ → `/technical-audit` now has Single URL / Sitemap / CSV-Paste modes.
-6. ~~No client-side crawl orchestrator~~ → `lib/crawl/orchestrator.ts::runCrawl` (bounded concurrency + progress + cancel).
+### Gaps for the multi-input Technical Audit (as scoped in Session 3, closed across Sessions 4-6)
+1. ~~No sitemap **URL extraction** endpoint~~ -> `modules/sitemap_extractor.py` + `api/sitemap.py` (Session 4).
+2. ~~No sitemap-index recursion, no gzip support~~ -> both handled (depth cap 5, cycle guard) (Session 4).
+3. ~~No CSV parsing~~ -> `lib/crawl/parseUrlList.ts` (client-side, no upload) (Session 4).
+4. ~~`AuditContext.addResult` is single-only~~ -> `addResults(results[])` added (Session 4).
+5. ~~single-URL input only~~ -> `/technical-audit` now has Single URL / Sitemap / Crawl-from-URL / CSV-Paste modes (Session 4 + 5).
+6. ~~No client-side crawl orchestrator~~ -> `lib/crawl/orchestrator.ts::runCrawl` (bounded concurrency + progress + cancel) (Session 4).
+
+All 6 original gaps are closed. Current open item is Phase 2 (sitewide
+site-health dedup, planned, not started), not a gap in the original list.
 
 ### Test target
-`https://www.edstellar.com/sitemap.xml` — flat `<urlset>`, **2,461 URLs**,
+`https://www.edstellar.com/sitemap.xml`: flat `<urlset>`, **2,461 URLs**,
 490 KB. Confirms need for a URL cap (default sample) + domain-level dedup.
 
 ---
@@ -93,16 +111,16 @@ server state — audit results persist client-side in localStorage only.**
 ## Reference research (2026-07-14)
 
 Popular technical-SEO crawlers surveyed for input-mode + concurrency patterns:
-- [Open SEO Crawler](https://github.com/puneetindersingh/open-seo-crawler) —
-  self-hosted Screaming Frog alt: **5 concurrent workers default (1–20)**,
+- [Open SEO Crawler](https://github.com/puneetindersingh/open-seo-crawler):
+  self-hosted Screaming Frog alt: **5 concurrent workers default (1-20)**,
   0.4s per-host politeness delay, **1,500-page default cap (up to 5,000)**,
   sitemap cross-check, live-refresh summary dashboard, XLSX export.
-- [StanGirard/seo-audits-toolkit](https://github.com/StanGirard/seo-audits-toolkit)
-  — sitemap URL extractor + Lighthouse/security-header crawler.
-- [sethblack/python-seo-analyzer](https://github.com/sethblack/python-seo-analyzer)
-  — sitemap-seeded or homepage-BFS crawl.
-- Screaming Frog (free tier = 500-URL cap) / Sitebulb (severity-scored
-  "Hints" + plain-language verdicts) — the commercial bar for UX/reporting.
+- [StanGirard/seo-audits-toolkit](https://github.com/StanGirard/seo-audits-toolkit):
+  sitemap URL extractor + Lighthouse/security-header crawler.
+- [sethblack/python-seo-analyzer](https://github.com/sethblack/python-seo-analyzer):
+  sitemap-seeded or homepage-BFS crawl.
+- Screaming Frog (free tier = 500-URL cap) and Sitebulb (severity-scored
+  "Hints" + plain-language verdicts): the commercial bar for UX/reporting.
 
 SEO Suite's own model (reference, NOT to copy wholesale): 5 input types
 (Sitemap / Crawl-from-URL / CSV-Excel / Paste URLs / Screaming Frog CSV),
@@ -113,47 +131,47 @@ limit 1–500 (default 10), workers 1–8 (default 3), crawl depth 1–4,
 
 ## Order of Execution (Phases)
 
-### PHASE 0 — Nav restructure  ✅ COMPLETE (v0.3.0)
+### PHASE 0 - Nav restructure  ✅ COMPLETE (v0.3.0)
 - Renamed **New Audit → Technical Audit**, moved `/new-audit` → `/technical-audit`.
 - Removed **Quick Tools** and **Link Graph** placeholder pages + nav entries.
 - Added a collapsible **"Additional Tools"** sidebar section (Heading Analysis
-  + Export Reports) — collapse state persists in localStorage, auto-expands
+  + Export Reports), collapse state persists in localStorage, auto-expands
   if it contains the active route.
 
-### PHASE 1 — Multi-input Technical Audit  ✅ COMPLETE (v0.3.0)
-Client-orchestrated (browser fans out `/api/audit` calls — see agents.md
+### PHASE 1 - Multi-input Technical Audit  ✅ COMPLETE (v0.3.0)
+Client-orchestrated (browser fans out `/api/audit` calls, see agents.md
 "Sitewide/bulk audit architecture"). Three input modes shipped: **Single URL
 · Sitemap · CSV/Paste URL list.**
 
-- **1a. Sitemap extraction** — `modules/sitemap_extractor.py` + `api/sitemap.py`.
+- **1a. Sitemap extraction**: `modules/sitemap_extractor.py` + `api/sitemap.py`.
   Recurses `<sitemapindex>` (depth cap 5, cycle guard), gzip support,
   SSRF-validates every hop, dedupes, include/exclude regex, URL cap (50
   default / 200 max). 9 unit tests + 1 live test (edstellar.com, 2,461 URLs
-  found) — all passing.
-- **1b. CSV/paste parsing** — `lib/crawl/parseUrlList.ts`, fully client-side.
+  found), all passing.
+- **1b. CSV/paste parsing**: `lib/crawl/parseUrlList.ts`, fully client-side.
   Detects url/link header column or scrapes http(s) cells; CSV/TSV/plain
   paste. 11 Vitest unit tests passing.
-- **1c/1d. Orchestrator + batched state** — `lib/crawl/orchestrator.ts::runCrawl`
+- **1c/1d. Orchestrator + batched state**: `lib/crawl/orchestrator.ts::runCrawl`
   (bounded concurrency 5 default/10 max, abort support) + `AuditContext.addResults()`.
-- **1e. Technical Audit page** — `app/technical-audit/page.tsx`: mode selector,
+- **1e. Technical Audit page**: `app/technical-audit/page.tsx`: mode selector,
   per-mode fields, bulk options (limit, concurrency), live progress bar +
   succeeded/failed counts + cancel, routes to `/results` on completion.
-- **1f. Sitewide rollup** — `app/results/page.tsx` gains a summary card (avg
+- **1f. Sitewide rollup**: `app/results/page.tsx` gains a summary card (avg
   score circle, score distribution, top failing checks) when 2+ results present.
 
 **Verification:** `/api/*.py` only runs under `vercel dev`, which needs
-interactive account linking (hangs headless) — so verification split two ways:
-(1) real Python-level pipeline test against Edstellar (`test_sitewide_pipeline_live.py`
-— sitemap resolved, 3 real pages audited, valid scores + 35-check checklists,
+interactive account linking (hangs headless), so verification split two ways:
+(1) real Python-level pipeline test against Edstellar (`test_sitewide_pipeline_live.py`,
+sitemap resolved, 3 real pages audited, valid scores + 35-check checklists,
 34.6s), and (2) `window.fetch` mocked in-browser to verify the full client
 orchestrator/UI end-to-end (mode switch, progress bar, cancel, batched
-persistence, rollup card, results table) — confirmed working via screenshots.
+persistence, rollup card, results table), confirmed working via screenshots.
 
-### PHASE 1g — Crawl-from-URL (4th input mode)  ✅ COMPLETE (v0.4.0)
+### PHASE 1g - Crawl-from-URL (4th input mode)  ✅ COMPLETE (v0.4.0)
 User pointed at a fetched-but-unmerged remote branch, `origin/venkataramana-work`
-(`git fetch origin venkataramana-work` — **do not delete this branch**), which
+(`git fetch origin venkataramana-work`, **do not delete this branch**), which
 contained `modules/crawler.py` (BFS link-discovery crawl, Phase 1 of its own
-`phases.md` roadmap for a fuller async job-queue crawl architecture — phases
+`phases.md` roadmap for a fuller async job-queue crawl architecture; phases
 2-6 of that roadmap are NOT built here, just the Phase 1 crawler module) plus
 `tests/test_crawler.py` and a small `audit_url(..., prefetched=None)` addition
 to `modules/auditor.py` (avoids a duplicate fetch when the caller already has
@@ -162,9 +180,9 @@ tests pass against our current codebase).
 
 Adapted the API boundary to fit our client-orchestrated architecture: the
 branch's `crawl_site()` supports `run_full_audit=True` (synchronous per-page
-audit_url() calls inside the crawl loop — risks the 60s Vercel cap at the
+audit_url() calls inside the crawl loop, risks the 60s Vercel cap at the
 default max_pages=50), but `api/crawl.py` always calls it with
-`run_full_audit=False` — discovery only, same `{urls, total_found, capped}`
+`run_full_audit=False`, discovery only, same `{urls, total_found, capped}`
 contract shape as `api/sitemap.py`. Per-page auditing happens through the
 existing `lib/crawl/orchestrator.ts`, exactly like sitemap/CSV mode.
 
@@ -172,43 +190,45 @@ Added to `app/technical-audit/page.tsx` as "Crawl from URL" (4th mode, 4-column
 grid): start URL, include/exclude regex, max depth (1-10), robots.txt handling
 (respect/ignore/ignore_but_report), include-subdomains toggle, shared bulk
 options (limit/concurrency). New unit test (`test_discovery_only_mode_skips_per_page_audit`)
-+ opt-in live test (`test_live_edstellar_discovery_crawl` — 10 real pages
++ opt-in live test (`test_live_edstellar_discovery_crawl`, 10 real pages
 discovered via BFS in ~4s). Verified end-to-end in-browser via mocked
 `window.fetch` (mode select → 6/6 crawled + audited → results).
 
-### PHASE 1h — Help dialogs + check-selection UI  ✅ COMPLETE (v0.5.0)
+### PHASE 1h - Help dialogs + check-selection UI  ✅ COMPLETE (v0.5.0)
 User shared a screenshot of the reference tool's "Technical SEO" use-case
 page (explainer card with all 35 checks as pills, a "when to use" note, and
 an example output) and asked for (a) plain-English help dialogs per section,
 and (b) letting users choose which checks to run, "similar to SEO Suite's
 use case but keep all as default."
 
-- `lib/checklistDefs.ts` — frontend mirror of the 35 check ids/labels/groups
+- `lib/checklistDefs.ts`: frontend mirror of the 35 check ids/labels/groups
   (must stay in sync with `modules/technical_audit_checklist.py`), each with
   a one-sentence plain-English description. Guarded by
   `lib/checklistDefs.test.ts` (35 total, 12/11/12 group split, unique ids).
-- `components/HelpDialog.tsx` — reusable "ⓘ" popover (click to open, closes
+- `components/HelpDialog.tsx`: reusable "ⓘ" popover (click to open, closes
   on outside-click/Escape).
-- `components/ChecklistExplainer.tsx` — the "What Technical SEO checks" card,
+- `components/ChecklistExplainer.tsx`: the "What Technical SEO checks" card,
   mirroring the reference tool's explainer: description, all 35 checks as
-  pills, "when to use" callout. Added to the top of the Technical Audit page.
+  pills, "when to use" callout. Added below the audit form on the Technical
+  Audit page, collapsed by default so it doesn't push the form below the fold.
 - Help dialogs added to: each of the 4 input-mode cards (Single URL/Sitemap/
   Crawl/CSV) with a longer plain-English "when to use this mode" explanation,
   and each of the 3 checklist groups (Crawlability/On-Page/Site Health) on
   the detail page's Technical Audit tab.
-- `lib/useSelectedChecks.ts` + `components/CheckSelector.tsx` — a collapsible
+- `lib/useSelectedChecks.ts` + `components/CheckSelector.tsx`: a collapsible
   "Customize checks (N/35 selected)" panel with per-check checkboxes grouped
   by category, select-all/none, indeterminate group checkboxes, persisted to
   localStorage. **All 35 selected by default**, per the user's explicit
   instruction. Deselecting a check hides it from the detail page's Technical
-  Audit checklist tab — it is a **display filter only**; the backend still
+  Audit checklist tab; it is a **display filter only**, the backend still
   computes all 35 checks in one `audit_url()` call regardless (they're bundled
   into a single page fetch, so skipping individual checks server-side
-  wouldn't meaningfully speed anything up — this is stated explicitly in the
+  wouldn't meaningfully speed anything up, this is stated explicitly in the
   UI so the distinction isn't misleading).
 - Detail page's Technical Audit tab now shows "N of 35 checks shown" + a
-  "check(s) hidden — adjust in Customize checks" hint when the selection
-  excludes anything, and an empty state if everything is deselected.
+  "N check(s) hidden. Adjust in Technical Audit -> Customize checks." hint
+  when the selection excludes anything, and an empty state if everything is
+  deselected.
 
 Verified end-to-end in-browser: explainer card renders with all 35 pills,
 help popovers open/close correctly (mode cards + checklist groups), check
@@ -218,14 +238,14 @@ shown/hidden count. 15 vitest (added `checklistDefs.test.ts`) + 44 pytest
 (unchanged) all green; one real `react/no-unescaped-entities` lint issue
 introduced was found and fixed before commit.
 
-### PHASE 2 — Sitewide efficiency  ⏳ PLANNED  *(after Phase 1 works)*
+### PHASE 2 - Sitewide efficiency  ⏳ PLANNED  *(after Phase 1 works)*
 - Add `skip_site_health` param to `audit_url()`. In sitewide mode, run
   domain-level `analyze_site_health()` **once**, then per-page audits reuse
   that cached block. Cuts redundant WHOIS/DNS/SSL/robots/sitemap/HTTP2 calls
-  from N× to 1× per domain — major latency + politeness win on a 2,461-URL
+  from N× to 1× per domain, a major latency + politeness win on a 2,461-URL
   site. Checklist merges the shared site_health block per result for display.
 
-### PHASE C (trimmed) — API integrations  ⏳ MOSTLY N/A
+### PHASE C (trimmed) - API integrations  ⏳ MOSTLY N/A
 User directive: "add only what's needed for THIS tool." A technical audit is
 **no-API by definition** (SEO Suite's own tagline: "35 checks, no API key
 required"). PageSpeed Insights (`PSI_API_KEY`) is already integrated and is
@@ -233,7 +253,7 @@ the only external API a technical audit uses. **Net new API work for this
 tool: none.** GSC/Moz/DataForSEO/SerpAPI/Bing/IndexNow belong to separate
 use cases (authority/rank/indexing) and stay deferred.
 
-### PHASE B — Standalone Quick Tools  ⏸ PAUSED (user directive)
+### PHASE B - Standalone Quick Tools  ⏸ PAUSED (user directive)
 Redirect tracer, header inspector, keyword density, code-to-text ratio,
 compression check, robots.txt tester, duplicate-content detector,
 structured-data coverage, internal link graph. Parked; do not build until
@@ -243,15 +263,15 @@ explicitly unpaused.
 
 ## Testing plan (Phase 1 acceptance)
 
-1. **Unit** — `tests/test_sitemap_extractor.py`: flat urlset, sitemap-index
+1. **Unit**: `tests/test_sitemap_extractor.py`: flat urlset, sitemap-index
    recursion, gzip, cycle guard, cap/filter, SSRF rejection (mocked HTTP).
-2. **Unit** — CSV/paste parser (url-column detect, http-cell scrape, junk
+2. **Unit**: CSV/paste parser (url-column detect, http-cell scrape, junk
    rejection).
-3. **Live smoke** — extract `https://www.edstellar.com/sitemap.xml`, assert
+3. **Live smoke**: extract `https://www.edstellar.com/sitemap.xml`, assert
    ~2,461 URLs found; run a capped sample (limit 25) through the orchestrator
    in the browser; verify progress, N results in `/results`, rollup card, and
    the Technical Audit checklist tab on a drilled-down URL.
-4. **Regression** — existing 23 tests stay green; lint clean; `tsc --noEmit`.
+4. **Regression**: existing 23 tests stay green; lint clean; `tsc --noEmit`.
 
 ---
 
@@ -274,5 +294,6 @@ explicitly unpaused.
 | 2 | 2026-07-14 | v0.2.0 | SEO-Suite-style UI rebuild (indigo/violet gradient, dark sidebar, light/dark toggle, conic score circles, pill badges, mobile drawer). Technical SEO Audit use-case parity: `technical_audit_checklist.py` (35-check pass/warn/fail view) + `check_https_enforcement` + X-Robots-Tag nofollow; new detail "Technical Audit" tab; pytest harness + 23 tests; `agents.md` updated. |
 | 3 | 2026-07-14 | v0.2.0 | Research + this PROJECT_LOG. Scoped multi-input Technical Audit (single/sitemap/CSV), nav restructure, trimmed Phase C. Confirmed client-orchestrated architecture (serverless + localStorage constraint). Probed Edstellar sitemap (2,461 URLs). Plan signed off (route→`/technical-audit`, cap 50/200, concurrency 5/10, remove Link Graph nav). Pushed UI rebuild + Technical Audit checklist commits to `origin/main`. |
 | 4 | 2026-07-14 | v0.3.0 | **Phase 0+1 shipped.** Nav restructure (Technical Audit rename/route move, collapsible Additional Tools section, removed Quick Tools/Link Graph). Multi-input Technical Audit: sitemap extractor (index recursion, gzip, SSRF-safe) + `api/sitemap.py`, client CSV/paste parser, bounded-concurrency crawl orchestrator, batched `addResults`, 3-mode input UI with live progress, sitewide rollup card. Added Vitest for frontend unit tests (11 passing) alongside pytest (32 passing, 2 live tests opt-in). Verified end-to-end: real pipeline test against edstellar.com/sitemap.xml (2,461 URLs resolved, 3 real pages audited) + mocked-fetch in-browser UI walkthrough (mode switch → progress → results → rollup, all screenshotted). Pushed both commits to `origin/main`. |
-| 5 | 2026-07-14 | v0.4.0 | Made "Additional Tools" nav section collapsible (persisted, auto-expands on active route). **Phase 1g: Crawl-from-URL.** User pointed at unmerged remote branch `origin/venkataramana-work` (fetched, not deleted) — contained a well-tested BFS `modules/crawler.py` (`CrawlConfig`/`crawl_site`, seed selection, scope control, UA presets, 3 robots.txt modes) + `tests/test_crawler.py` + a small `prefetched` param on `audit_url()`. Adopted the crawler module as-is (11/11 tests pass unmodified); adapted the API boundary to our client-orchestrated model — `api/crawl.py` always runs discovery-only (`run_full_audit=False`), never the branch's synchronous per-page-audit mode, to stay under the 60s cap. Added as 4th Technical Audit input mode. New/live tests added and passing (44 pytest total, 3 opt-in skipped, 11 vitest). Verified end-to-end via mocked-fetch in-browser walkthrough. Branch also has a `phases.md` roadmap (async job queue, JS rendering, site scoring, dedicated crawl UI) for future phases — not built yet. |
-| 6 | 2026-07-14 | v0.5.0 | **Phase 1h: Help dialogs + check-selection UI.** User shared a screenshot of the reference tool's "Technical SEO" use-case explainer and asked for plain-English help dialogs plus a check-selection UI (default all on). Added `lib/checklistDefs.ts` (frontend mirror of the 35 check ids/labels/groups + one-sentence descriptions, guarded by a new test), `components/HelpDialog.tsx` (reusable popover), `components/ChecklistExplainer.tsx` (the "What Technical SEO checks" card with all 35 pills + "when to use"), and `lib/useSelectedChecks.ts` + `components/CheckSelector.tsx` (a "Customize checks (N/35 selected)" panel, all on by default, persisted to localStorage). Help dialogs added to each of the 4 input-mode cards and each of the 3 checklist groups on the detail page; the detail page's Technical Audit tab now filters displayed checks by the user's selection (explicitly a display filter — the backend still computes all 35 checks every audit, since they're free once the page is fetched). 15 vitest + 44 pytest green; one real lint issue (unescaped apostrophes) found and fixed. Verified end-to-end in-browser via mocked state (explainer render, help popover open/close, check deselection + persistence, detail-page filtering with an accurate hidden-count message). |
+| 5 | 2026-07-14 | v0.4.0 | Made "Additional Tools" nav section collapsible (persisted, auto-expands on active route). **Phase 1g: Crawl-from-URL.** User pointed at unmerged remote branch `origin/venkataramana-work` (fetched, not deleted), which contained a well-tested BFS `modules/crawler.py` (`CrawlConfig`/`crawl_site`, seed selection, scope control, UA presets, 3 robots.txt modes) + `tests/test_crawler.py` + a small `prefetched` param on `audit_url()`. Adopted the crawler module as-is (11/11 tests pass unmodified); adapted the API boundary to our client-orchestrated model: `api/crawl.py` always runs discovery-only (`run_full_audit=False`), never the branch's synchronous per-page-audit mode, to stay under the 60s cap. Added as 4th Technical Audit input mode. New/live tests added and passing (44 pytest total, 3 opt-in skipped, 11 vitest). Verified end-to-end via mocked-fetch in-browser walkthrough. Branch also has a `phases.md` roadmap (async job queue, JS rendering, site scoring, dedicated crawl UI) for future phases, not built yet. |
+| 6 | 2026-07-14 | v0.5.0 | **Phase 1h: Help dialogs + check-selection UI.** User shared a screenshot of the reference tool's "Technical SEO" use-case explainer and asked for plain-English help dialogs plus a check-selection UI (default all on). Added `lib/checklistDefs.ts` (frontend mirror of the 35 check ids/labels/groups + one-sentence descriptions, guarded by a new test), `components/HelpDialog.tsx` (reusable popover), `components/ChecklistExplainer.tsx` (the "What Technical SEO checks" card with all 35 pills + "when to use", rendered below the audit form and collapsed by default), and `lib/useSelectedChecks.ts` + `components/CheckSelector.tsx` (a "Customize checks (N/35 selected)" panel, all on by default, persisted to localStorage). Help dialogs added to each of the 4 input-mode cards and each of the 3 checklist groups on the detail page; the detail page's Technical Audit tab now filters displayed checks by the user's selection (explicitly a display filter: the backend still computes all 35 checks every audit, since they're free once the page is fetched). 15 vitest + 44 pytest green; one real lint issue (unescaped apostrophes) found and fixed. Verified end-to-end in-browser via mocked state (explainer render, help popover open/close, check deselection + persistence, detail-page filtering with an accurate hidden-count message). |
+| 7 | 2026-07-14 | v0.6.0 | **UI polish, reporting gap fix, docs accuracy, and a full em-dash removal.** Moved `ChecklistExplainer` below the audit form (matching the user's screenshot) and collapsed it by default. Discovered PR #1 (`venkataramana-d`, still open) implements the FULL `venkataramana-work` roadmap (SQLite job queue, Playwright JS rendering, site scoring, a separate `/crawl` UI), overlapping/conflicting with the simpler discovery-only `api/crawl.py` already shipped; user decided to leave PR #1 untouched for now (not merged, not closed). Fixed 4 hardcoded `bg-white` inputs/selects (settings, performance, headings, detail pages) that broke dark mode, plus themed the dashboard's Recharts tooltips (`contentStyle`/`labelStyle` with CSS variables instead of Recharts' white default). Dispatched 5 parallel agents across 2 rounds for non-overlapping file sets: (1) UI content quality + em-dash removal across `app/`/`components/` except export, (2) reporting/export improvements, closing a real gap where the 35-check checklist was completely absent from CSV/Excel/PDF exports (now a checklist column/sheet/summary line in every format, `tests/test_report_generator.py` added), (3) `agents.md`/`PROJECT_LOG.md` accuracy audit (found and fixed a stale "Current State" section from Session 3/4), (4) em-dash sweep for the remaining Python modules/tests, (5) em-dash sweep for remaining `lib/*.ts` files + README. Total: 164 additional em-dashes removed across the whole codebase (zero remain anywhere in `app/`, `components/`, `lib/`, `modules/`, `api/`, `tests/`, or `*.md`). Final verification: 51 pytest passed (3 opt-in live skipped), 15 vitest passed, `tsc --noEmit` clean, lint at the exact pre-existing 27-error baseline (no new errors), secret scan clean across all 51 changed/new files. |

@@ -142,7 +142,7 @@ export default function PerformancePage() {
             setSelectedIdx(Number(e.target.value));
             setLivePsi(null);
           }}
-          className="mb-4 rounded-lg border border-[var(--seo-border-strong)] bg-white px-3 py-2 text-sm"
+          className="mb-4 rounded-lg border border-[var(--seo-border-strong)] bg-[var(--seo-card-bg)] px-3 py-2 text-sm text-[var(--seo-text)]"
         >
           {results.map((res, i) => (
             <option key={res.url} value={i}>
@@ -171,13 +171,13 @@ export default function PerformancePage() {
       {subTab === "Mobile" ? (
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <MetricCard label="Mobile Score" value={mobile.mobile_score ?? "—"} />
+            <MetricCard label="Mobile Score" value={mobile.mobile_score ?? "N/A"} />
             <MetricCard label="Mobile Friendly" value={mobile.is_mobile_friendly ? "Yes" : "No"} />
             <MetricCard
               label="Checks Passed"
               value={`${mobile.passed_checks ?? 0}/${mobile.total_checks ?? 0}`}
             />
-            <MetricCard label="CWV Source" value={cwv.source || "—"} />
+            <MetricCard label="CWV Source" value={cwv.source || "N/A"} />
           </div>
 
           <Card>
@@ -201,10 +201,10 @@ export default function PerformancePage() {
             ) : null}
             {livePsi ? (
               <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <MetricCard label="Performance" value={livePsi.performance_score ?? "—"} />
-                <MetricCard label="Accessibility" value={livePsi.accessibility_score ?? "—"} />
-                <MetricCard label="SEO" value={livePsi.seo_score ?? "—"} />
-                <MetricCard label="Best Practices" value={livePsi.best_practices_score ?? "—"} />
+                <MetricCard label="Performance" value={livePsi.performance_score ?? "N/A"} />
+                <MetricCard label="Accessibility" value={livePsi.accessibility_score ?? "N/A"} />
+                <MetricCard label="SEO" value={livePsi.seo_score ?? "N/A"} />
+                <MetricCard label="Best Practices" value={livePsi.best_practices_score ?? "N/A"} />
               </div>
             ) : null}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -218,7 +218,7 @@ export default function PerformancePage() {
                     key={key}
                     className="rounded-lg p-3 text-center"
                     style={{ backgroundColor: colors.bg }}
-                    title={info ? `${info.label} — good: ${info.good}, needs improvement: ${info.needsWork}` : undefined}
+                    title={info ? `${info.label} (good: ${info.good}, needs improvement: ${info.needsWork})` : undefined}
                   >
                     <div className="text-xs uppercase text-[var(--seo-muted)]">{key}</div>
                     <div className="mt-1 text-lg font-bold" style={{ color: colors.text }}>
@@ -283,7 +283,7 @@ export default function PerformancePage() {
                               : "var(--seo-muted)",
                         }}
                       >
-                        {c.status} {c.value ? `— ${c.value}` : ""}
+                        {c.status} {c.value ? `: ${c.value}` : ""}
                       </span>
                     </div>
                   ))}
@@ -315,7 +315,7 @@ function ImageSeoTab({ results, showSource }: { results: AuditResult[]; showSour
   const largeImages = images.filter((i) => i.issues.includes("Large file size (> 200KB)")).length;
   // Derived from the per-image issues list (not a raw !has_lazy check) so this
   // matches modules/image_auditor.py's own exclusion of the LCP image from
-  // the lazy-loading complaint — that image correctly should NOT be lazy.
+  // the lazy-loading complaint: that image correctly should NOT be lazy.
   const noLazy = images.filter((i) => i.issues.includes("Missing lazy loading")).length;
   const brokenImages = images.filter((i) => i.is_broken === true).length;
   const formatOpportunities = images.filter((i) => i.issues.includes("Could be converted to WebP/AVIF"));
@@ -396,7 +396,7 @@ function ImageSeoTab({ results, showSource }: { results: AuditResult[]; showSour
         img.format_label,
         img.alt_status,
         img.alt_text || "",
-        img.has_dimensions ? `${img.width}×${img.height}` : "—",
+        img.has_dimensions ? `${img.width}×${img.height}` : "N/A",
         img.has_lazy ? "Yes" : "No",
         formatBytes(img.file_size_bytes),
         img.is_broken ? `Yes (${img.status_code ?? img.fetch_error ?? "unreachable"})` : "No",
@@ -448,7 +448,7 @@ function ImageSeoTab({ results, showSource }: { results: AuditResult[]; showSour
           <ul className="text-sm text-[var(--seo-text)]">
             {formatOpportunities.slice(0, 8).map((img, i) => (
               <li key={i} className="truncate border-b border-[var(--seo-border)] py-1 last:border-0">
-                {img.name} <span className="text-xs text-[var(--seo-muted)]">— {formatBytes(img.file_size_bytes)}</span>
+                {img.name} <span className="text-xs text-[var(--seo-muted)]">({formatBytes(img.file_size_bytes)})</span>
               </li>
             ))}
             {formatOpportunities.length === 0 ? <li className="text-[var(--seo-muted)]">None found.</li> : null}
@@ -570,7 +570,7 @@ function ImageSeoTab({ results, showSource }: { results: AuditResult[]; showSour
                       </span>
                     </td>
                     <td className="px-4 py-3">{img.format_label}</td>
-                    <td className="px-4 py-3">{img.has_dimensions ? `${img.width}×${img.height}` : "—"}</td>
+                    <td className="px-4 py-3">{img.has_dimensions ? `${img.width}×${img.height}` : "N/A"}</td>
                     <td className="px-4 py-3">{formatBytes(img.file_size_bytes)}</td>
                     <td className="px-4 py-3">
                       {img.__priority > 0 ? (
@@ -584,7 +584,7 @@ function ImageSeoTab({ results, showSource }: { results: AuditResult[]; showSour
                           {img.__priority}
                         </span>
                       ) : (
-                        <span className="text-[var(--seo-muted)]">—</span>
+                        <span className="text-[var(--seo-muted)]">N/A</span>
                       )}
                     </td>
                     <td className="px-4 py-3">

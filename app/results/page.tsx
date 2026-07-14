@@ -35,7 +35,7 @@ export default function ResultsPage() {
     });
   }, [results, scoreMax, brokenOnly]);
 
-  // Sitewide rollup — only meaningful when more than one URL was audited.
+  // Sitewide rollup: only meaningful when more than one URL was audited.
   const rollup = useMemo(() => {
     if (results.length < 2) return null;
     const issues = allIssuesOf(results);
@@ -186,7 +186,7 @@ export default function ResultsPage() {
                   <td className="px-4 py-3 capitalize text-[var(--seo-text-light)]">
                     {r.audit_type}
                   </td>
-                  <td className="px-4 py-3 text-[var(--seo-text-light)]">{r.status_code ?? "—"}</td>
+                  <td className="px-4 py-3 text-[var(--seo-text-light)]">{r.status_code ?? "N/A"}</td>
                   <td className="px-4 py-3">
                     <ScoreBadge score={r.seo_score ?? 0} />
                   </td>

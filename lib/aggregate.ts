@@ -1,6 +1,6 @@
 import type { AuditResult, Issue } from "@/lib/types";
 
-// Mirrors modules/scoring.py THEMES / get_thematic_issues / get_top_issues_by_impact —
+// Mirrors modules/scoring.py THEMES / get_thematic_issues / get_top_issues_by_impact:
 // these are pure grouping/sorting functions over already-computed issue lists,
 // so there's no need to round-trip to the Python API to recompute them.
 export const THEMES: Record<string, string[]> = {

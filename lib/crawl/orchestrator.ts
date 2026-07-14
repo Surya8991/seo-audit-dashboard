@@ -1,7 +1,7 @@
 // Client-side crawl orchestrator for the sitewide Technical Audit.
 //
 // Our backend is stateless Vercel serverless (60s/invocation, no SSE, no server
-// state — see PROJECT_LOG.md), so the browser drives the crawl: given a list of
+// state, see PROJECT_LOG.md), so the browser drives the crawl: given a list of
 // URLs it fires bounded-concurrency single-URL POST /api/audit calls, reporting
 // progress as each completes. One invocation audits one URL, so nothing risks
 // the 60s function cap.

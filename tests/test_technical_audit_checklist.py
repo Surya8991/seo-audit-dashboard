@@ -1,4 +1,4 @@
-"""Unit tests for modules/technical_audit_checklist.py — the 35-check Technical
+"""Unit tests for modules/technical_audit_checklist.py: the 35-check Technical
 SEO Audit use-case view ported from the standalone tool's phase1.py checklist."""
 
 from modules.technical_audit_checklist import build_technical_audit_checklist
@@ -140,7 +140,7 @@ def test_missing_spf_dmarc_mx_are_warnings_not_failures():
     assert _find(checklist, "spf_check")["status"] == "warning"
     assert _find(checklist, "dmarc_check")["status"] == "warning"
     assert _find(checklist, "mx_records_check")["status"] == "warning"
-    # DNS is informational/optional — never a hard failure
+    # DNS is informational/optional: never a hard failure
     assert _find(checklist, "dns_health_check")["status"] in ("pass", "warning")
 
 

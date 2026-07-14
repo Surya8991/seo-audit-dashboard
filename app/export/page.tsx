@@ -5,9 +5,9 @@ import { useAudit } from "@/lib/state/AuditContext";
 import { Card, EmptyState, PageHeader, ScoreBadge } from "@/components/ui";
 
 const FORMATS = [
-  { id: "csv", label: "CSV", desc: "Flat summary — one row per URL." },
-  { id: "xlsx", label: "Excel", desc: "Multi-sheet workbook: Summary, Issues, Links." },
-  { id: "pdf", label: "PDF", desc: "Formatted report for sharing." },
+  { id: "csv", label: "CSV", desc: "Flat summary: one row per URL, includes checklist pass/warn/fail counts." },
+  { id: "xlsx", label: "Excel", desc: "Multi-sheet workbook: Summary, Issues, Links, Technical Checklist." },
+  { id: "pdf", label: "PDF", desc: "Formatted report for sharing, includes checklist score per URL." },
   { id: "json", label: "JSON", desc: "Full raw audit data for every URL." },
 ] as const;
 
@@ -87,18 +87,27 @@ export default function ExportPage() {
               <th className="px-4 py-3">URL</th>
               <th className="px-4 py-3">Score</th>
               <th className="px-4 py-3">Issues</th>
+              <th className="px-4 py-3">Checklist</th>
             </tr>
           </thead>
           <tbody>
-            {results.map((r) => (
-              <tr key={r.url} className="border-b border-[var(--table-row-border)]">
-                <td className="max-w-md truncate px-4 py-3">{r.url}</td>
-                <td className="px-4 py-3">
-                  <ScoreBadge score={r.seo_score ?? 0} />
-                </td>
-                <td className="px-4 py-3">{r.all_issues?.length ?? 0}</td>
-              </tr>
-            ))}
+            {results.map((r) => {
+              const summary = r.technical_audit_checklist?.summary;
+              return (
+                <tr key={r.url} className="border-b border-[var(--table-row-border)]">
+                  <td className="max-w-md truncate px-4 py-3">{r.url}</td>
+                  <td className="px-4 py-3">
+                    <ScoreBadge score={r.seo_score ?? 0} />
+                  </td>
+                  <td className="px-4 py-3">{r.all_issues?.length ?? 0}</td>
+                  <td className="px-4 py-3 text-xs text-[var(--seo-text-light)]">
+                    {summary
+                      ? `${summary.pass} pass / ${summary.warning} warn / ${summary.fail} fail`
+                      : "Not available"}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </Card>

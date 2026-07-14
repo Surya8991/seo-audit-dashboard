@@ -78,18 +78,18 @@ function BoolBadge({ ok }: { ok: boolean }) {
 }
 
 function formatValue(v: unknown): string {
-  if (v === null || v === undefined || v === "") return "—";
+  if (v === null || v === undefined || v === "") return "N/A";
   if (Array.isArray(v)) return String(v.length);
   if (typeof v === "object") {
     const entries = Object.entries(v as Record<string, unknown>).filter(
       ([k]) => k !== "issues" && !k.startsWith("_"),
     );
-    if (entries.length === 0) return "—";
+    if (entries.length === 0) return "N/A";
     return entries
       .map(([k, val]) => {
         if (Array.isArray(val)) return `${k}: ${val.length}`;
         if (val && typeof val === "object") return `${k}: …`;
-        if (val === null || val === undefined || val === "") return `${k}: —`;
+        if (val === null || val === undefined || val === "") return `${k}: N/A`;
         return `${k}: ${val}`;
       })
       .join(", ");
@@ -183,7 +183,7 @@ export default function DetailPage() {
           <select
             value={idx}
             onChange={(e) => setSelectedUrlIndex(Number(e.target.value))}
-            className="rounded-lg border border-[var(--seo-border-strong)] bg-white px-3 py-2 text-sm"
+            className="rounded-lg border border-[var(--seo-border-strong)] bg-[var(--seo-card-bg)] px-3 py-2 text-sm text-[var(--seo-text)]"
           >
             {results.map((res, i) => (
               <option key={res.url} value={i}>
@@ -197,7 +197,7 @@ export default function DetailPage() {
       <div className="mb-4 flex items-center gap-3">
         <ScoreBadge score={r.seo_score ?? 0} />
         <span className="text-sm text-[var(--seo-text-light)]">
-          Status {r.status_code ?? "—"} · {issues.length} issues · {r.response_time?.toFixed?.(2) ?? "—"}s
+          Status {r.status_code ?? "N/A"} · {issues.length} issues · {r.response_time?.toFixed?.(2) ?? "N/A"}s
         </span>
       </div>
 
@@ -320,7 +320,7 @@ export default function DetailPage() {
                 <Card>
                   <div className="flex flex-wrap items-center gap-4 text-sm">
                     <span className="font-semibold text-[var(--seo-subheading)]">
-                      Technical SEO Audit — {shown} of {r.technical_audit_checklist.summary.total} checks shown
+                      Technical SEO Audit: {shown} of {r.technical_audit_checklist.summary.total} checks shown
                     </span>
                     <span className="flex items-center gap-1">
                       <StatusPill status="pass" /> {shownPass}
@@ -334,7 +334,7 @@ export default function DetailPage() {
                   </div>
                   {shown < r.technical_audit_checklist.summary.total ? (
                     <p className="mt-2 text-xs text-[var(--seo-muted)]">
-                      {r.technical_audit_checklist.summary.total - shown} check(s) hidden — adjust in
+                      {r.technical_audit_checklist.summary.total - shown} check(s) hidden. Adjust in
                       Technical Audit → Customize checks.
                     </p>
                   ) : null}

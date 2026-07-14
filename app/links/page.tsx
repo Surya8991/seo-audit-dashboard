@@ -134,7 +134,7 @@ export default function LinkAnalysisPage() {
               <h3 className="text-sm font-semibold text-[var(--seo-subheading)]">
                 Executive Summary
               </h3>
-              <span className="text-xs text-[var(--seo-muted)]" title="Computed deterministically from the audit data below — not an LLM-generated write-up.">
+              <span className="text-xs text-[var(--seo-muted)]" title="Computed deterministically from the audit data below, not an LLM-generated write-up.">
                 Rule-based summary
               </span>
             </div>
@@ -173,7 +173,7 @@ export default function LinkAnalysisPage() {
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-sm text-[var(--seo-muted)]">Nothing quick to fix — nice work.</p>
+                  <p className="text-sm text-[var(--seo-muted)]">Nothing quick to fix, nice work.</p>
                 )}
               </div>
             </div>
@@ -317,7 +317,7 @@ export default function LinkAnalysisPage() {
               Duplicate Anchors ({dupAnchors.length})
             </h3>
             <p className="mb-2 text-xs text-[var(--seo-text-light)]">
-              Same anchor text used for links pointing to different destinations — confusing for users
+              Same anchor text used for links pointing to different destinations: confusing for users
               and dilutes the relevance signal each destination gets from that phrase.
             </p>
             <div className="flex flex-col gap-2">
@@ -396,13 +396,13 @@ export default function LinkAnalysisPage() {
               Missing Security Attributes ({gaps.length})
             </h3>
             <p className="mb-2 text-xs text-[var(--seo-text-light)]">
-              Links opening in a new tab without <code>rel=&quot;noopener noreferrer&quot;</code> —
+              Links opening in a new tab without <code>rel=&quot;noopener noreferrer&quot;</code>:
               a tabnabbing / performance risk.
             </p>
             <ul className="text-sm text-[var(--seo-text)]">
               {gaps.slice(0, 25).map((l, i) => (
                 <li key={i} className="truncate border-b border-[var(--seo-border)] py-1 last:border-0">
-                  {l.url} <span className="text-xs text-[var(--seo-muted)]">— {l.anchor_text}</span>
+                  {l.url} <span className="text-xs text-[var(--seo-muted)]">({l.anchor_text})</span>
                 </li>
               ))}
               {gaps.length === 0 ? <li className="text-[var(--seo-muted)]">None found.</li> : null}
@@ -761,14 +761,14 @@ function LinkTable({
                         {l.__priority}
                       </span>
                     ) : (
-                      <span className="text-[var(--seo-muted)]">—</span>
+                      <span className="text-[var(--seo-muted)]">N/A</span>
                     )}
                   </td>
                   {showDetails ? (
                     <>
                       <td className="px-4 py-3 capitalize">{l.link_category || "page"}</td>
                       <td className="px-4 py-3 capitalize">{l.location || "body"}</td>
-                      <td className="px-4 py-3">{l.response_time_ms != null ? `${l.response_time_ms} ms` : "—"}</td>
+                      <td className="px-4 py-3">{l.response_time_ms != null ? `${l.response_time_ms} ms` : "N/A"}</td>
                       <td className="px-4 py-3 text-xs">{linkCertainty(l)}</td>
                     </>
                   ) : null}
@@ -884,7 +884,7 @@ function IssueDetail({
         <div>
           <h5 className="text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">Technical Details</h5>
           <p className="text-[var(--seo-text)]">
-            Status {link.status_code ?? "—"} · {link.response_time_ms != null ? `${link.response_time_ms} ms` : "not timed"}
+            Status {link.status_code ?? "N/A"} · {link.response_time_ms != null ? `${link.response_time_ms} ms` : "not timed"}
             {link.redirect_path && link.redirect_path.length > 1 ? (
               <>
                 <br />

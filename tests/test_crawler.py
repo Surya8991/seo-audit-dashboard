@@ -1,4 +1,4 @@
-"""Tests for modules/crawler.py — BFS site crawl, scope control, robots.txt modes."""
+"""Tests for modules/crawler.py: BFS site crawl, scope control, robots.txt modes."""
 
 import os
 from unittest.mock import MagicMock, patch
@@ -177,7 +177,7 @@ def test_crawl_blocks_ssrf_targets():
 @patch("modules.crawler.requests.get", side_effect=_allow_all_robots_get)
 @patch("modules.crawler.fetch_page")
 def test_discovery_only_mode_skips_per_page_audit(mock_fetch, mock_robots_get, mock_audit):
-    # api/crawl.py always runs with run_full_audit=False — the browser fans out
+    # api/crawl.py always runs with run_full_audit=False: the browser fans out
     # per-page /api/audit calls itself (lib/crawl/orchestrator.ts) to stay
     # within the serverless maxDuration cap. Discovered pages must NOT carry
     # an "audit" key, and audit_url must never be called in this mode.
@@ -197,7 +197,7 @@ def test_discovery_only_mode_skips_per_page_audit(mock_fetch, mock_robots_get, m
 
 @pytest.mark.skipif(
     os.environ.get("RUN_LIVE_TESTS") != "1",
-    reason="live network test — set RUN_LIVE_TESTS=1 to run",
+    reason="live network test: set RUN_LIVE_TESTS=1 to run",
 )
 def test_live_edstellar_discovery_crawl():
     # Mirrors what api/crawl.py runs in production: discovery-only, bounded,

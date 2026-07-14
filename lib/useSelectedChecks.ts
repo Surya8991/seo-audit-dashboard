@@ -10,7 +10,7 @@ const STORAGE_KEY = "seo-audit-selected-checks";
  * Default: all checks selected. Used by CheckSelector (to edit) and the
  * detail page's Technical Audit tab (to filter what's displayed).
  *
- * Note: deselecting a check only hides it from the report — the backend
+ * Note: deselecting a check only hides it from the report; the backend
  * always computes all 35 checks in one audit_url() call (they're bundled
  * into a single page fetch, so skipping individual checks server-side
  * wouldn't meaningfully speed anything up). Selection is a display filter.
@@ -27,7 +27,7 @@ export function useSelectedChecks() {
         setSelected(new Set(ids));
       }
     } catch {
-      /* ignore — fall back to default (all selected) */
+      /* ignore, fall back to default (all selected) */
     }
     setHydrated(true);
   }, []);
