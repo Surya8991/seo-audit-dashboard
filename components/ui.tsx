@@ -1,7 +1,8 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { scoreColor, severityColor } from "@/lib/format";
 import type { Issue } from "@/lib/types";
 import { fixDifficulty, type Difficulty } from "@/lib/difficulty";
+import { explainCommonIssue } from "@/lib/commonIssuesKB";
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <div className={`card p-5 ${className}`}>{children}</div>;
@@ -107,24 +108,69 @@ export function DifficultyBadge({ difficulty }: { difficulty: Difficulty }) {
 }
 
 export function IssueRow({ issue }: { issue: Issue }) {
+  const [expanded, setExpanded] = useState(false);
+  const explanation = explainCommonIssue(issue);
+
   return (
-    <div className="flex items-start justify-between gap-3 border-b border-[var(--seo-border)] py-3 last:border-0">
-      <div>
-        <div className="flex flex-wrap items-center gap-2">
-          <SeverityBadge severity={issue.severity} />
-          <DifficultyBadge difficulty={fixDifficulty(issue)} />
-          <span className="text-xs text-[var(--seo-muted)]">{issue.category}</span>
+    <div className="border-b border-[var(--seo-border)] py-3 last:border-0">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <SeverityBadge severity={issue.severity} />
+            <DifficultyBadge difficulty={fixDifficulty(issue)} />
+            <span className="text-xs text-[var(--seo-muted)]">{issue.category}</span>
+          </div>
+          <div className="mt-1 text-sm font-medium text-[var(--seo-subheading)]">
+            {issue.issue}
+          </div>
+          <div className="mt-0.5 text-xs text-[var(--seo-text-light)]">
+            {issue.recommendation}
+          </div>
+          {explanation ? (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="mt-1 text-xs font-medium text-[var(--seo-accent)] hover:underline"
+            >
+              {expanded ? "Hide details" : "Learn more →"}
+            </button>
+          ) : null}
         </div>
-        <div className="mt-1 text-sm font-medium text-[var(--seo-subheading)]">
-          {issue.issue}
-        </div>
-        <div className="mt-0.5 text-xs text-[var(--seo-text-light)]">
-          {issue.recommendation}
-        </div>
+        <span className="shrink-0 text-xs text-[var(--seo-muted)]">
+          Impact {issue.impact_score}
+        </span>
       </div>
-      <span className="shrink-0 text-xs text-[var(--seo-muted)]">
-        Impact {issue.impact_score}
-      </span>
+      {expanded && explanation ? <CommonIssueDetail explanation={explanation} /> : null}
+    </div>
+  );
+}
+
+function CommonIssueDetail({ explanation }: { explanation: NonNullable<ReturnType<typeof explainCommonIssue>> }) {
+  return (
+    <div className="mt-3 grid grid-cols-1 gap-3 rounded-lg bg-[var(--seo-card-hover)] p-3 sm:grid-cols-2">
+      <div>
+        <h5 className="text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">What is it?</h5>
+        <p className="text-sm text-[var(--seo-text)]">{explanation.whatIsIt}</p>
+      </div>
+      <div>
+        <h5 className="text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">Why it matters</h5>
+        <p className="text-sm text-[var(--seo-text)]">{explanation.whyItMatters}</p>
+      </div>
+      <div>
+        <h5 className="text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">SEO impact</h5>
+        <p className="text-sm text-[var(--seo-text)]">{explanation.seoImpact}</p>
+      </div>
+      <div>
+        <h5 className="text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">User impact</h5>
+        <p className="text-sm text-[var(--seo-text)]">{explanation.userImpact}</p>
+      </div>
+      <div className="sm:col-span-2">
+        <h5 className="text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">Recommended fix</h5>
+        <p className="text-sm text-[var(--seo-text)]">{explanation.recommendedFix}</p>
+        {explanation.source ? (
+          <p className="mt-1 text-xs text-[var(--seo-muted)]">Source: {explanation.source}</p>
+        ) : null}
+      </div>
     </div>
   );
 }

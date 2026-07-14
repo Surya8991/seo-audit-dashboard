@@ -82,6 +82,8 @@ summary from this project's standalone Streamlit SEO audit tool ported in as
 | **Top Issues by Impact** | Priority-ranked recommendations, fix high-impact first |
 | **Thematic Grouping** | SEMrush-style: Crawlability / Metadata / Content / Links / Technical / Social & Schema |
 | **Radar Chart** | Visual per-category score breakdown |
+| **Top Failing Checks Chart** | Horizontal bar chart on the Results page comparing how many pages are hit by each common issue, colour-coded by severity |
+| **Common Issues & Fixes** | Any issue matching a curated knowledge base (~20 of the most common SEO issues) gets a "Learn more →" expansion: what it is, why it matters, SEO impact, user impact, and the recommended fix, grounded in current guidance (Google Search Central, web.dev) |
 
 ### Export
 Report export lives as an action bar on the **Results** page (not a separate

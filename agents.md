@@ -52,6 +52,20 @@ prior standalone Streamlit SEO audit tool ported in on top.
   the checklist reports them with status `"info"` (a 4th `ChecklistStatus`,
   excluded from the pass/warning/fail summary, which now also carries an `info`
   count). Do NOT reintroduce them as warnings/failures or into `all_issues`.
+- **Common Issues & Fixes knowledge base:** `lib/commonIssuesKB.ts`
+  (`explainCommonIssue`) generalizes the per-image issue explainer pattern
+  (`lib/imageAnalysis.ts::explainImageIssue`) to the app's other issue
+  categories: a curated top-~20 list of the most common real issue titles
+  (matched by regex against the actual strings emitted by
+  `modules/{auditor,technical_checks,advanced_checks,link_auditor,
+  mobile_auditor,image_auditor}.py`), each with what-is-it / why-it-matters /
+  SEO impact / user impact / recommended fix, and a `source` citation for
+  facts that change over time (Core Web Vitals thresholds, mobile-first
+  indexing) grounded in a 2026 web search (Google Search Central, web.dev).
+  Wired into `IssueRow` (`components/ui.tsx`) as an inline "Learn more →"
+  expansion, shown only when a KB entry matches; NOT exhaustive coverage of
+  every possible issue string by design. Guarded by
+  `lib/commonIssuesKB.test.ts`.
 - `api/audit.py`: runs a full audit for one URL, returns `modules.auditor.audit_url()` almost verbatim
 - `api/sitemap.py`: resolves a sitemap (or bare domain) to a URL list for the
   sitewide Technical Audit; see "Sitewide/bulk audit architecture" below

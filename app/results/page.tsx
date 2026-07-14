@@ -8,7 +8,9 @@ import { ExportBar } from "@/components/ExportBar";
 import { allIssuesOf, avgScore } from "@/lib/aggregate";
 import { difficultyBreakdown } from "@/lib/difficulty";
 import { siteScore, gradeColor } from "@/lib/siteScore";
+import { severityColor } from "@/lib/format";
 import type { AuditResult } from "@/lib/types";
+import { Bar, BarChart, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 function hostOf(url: string): string {
   try {
@@ -191,16 +193,35 @@ export default function ResultsPage() {
               <div className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--seo-muted)]">
                 Top failing checks (site-wide)
               </div>
-              <div className="flex flex-col gap-1.5">
-                {rollup.topFailing.map((f) => (
-                  <div key={f.issue} className="flex items-center justify-between gap-3 text-sm">
-                    <span className="truncate text-[var(--seo-text)]">{f.issue}</span>
-                    <span className="shrink-0 rounded-full bg-[var(--seo-card-hover)] px-2 py-0.5 text-xs font-medium text-[var(--seo-text-light)]">
-                      {f.count} pages
-                    </span>
-                  </div>
-                ))}
-              </div>
+              {/* Bars for "compare a handful of categories at a glance"; the
+                  detailed per-issue text (with fix guidance) lives in each
+                  URL's Issues tab, not duplicated here. */}
+              <ResponsiveContainer width="100%" height={Math.max(120, rollup.topFailing.length * 34)}>
+                <BarChart
+                  data={rollup.topFailing}
+                  layout="vertical"
+                  margin={{ top: 4, right: 36, left: 4, bottom: 4 }}
+                >
+                  <XAxis type="number" hide />
+                  <YAxis
+                    type="category"
+                    dataKey="issue"
+                    width={160}
+                    tick={{ fontSize: 11, fill: "var(--seo-text-light)" }}
+                    tickFormatter={(v: string) => (v.length > 26 ? `${v.slice(0, 25)}…` : v)}
+                  />
+                  <Tooltip
+                    formatter={(value) => [`${value} pages`, "Affected"]}
+                    contentStyle={{ background: "var(--seo-card-bg)", border: "1px solid var(--seo-border)", fontSize: 12 }}
+                  />
+                  <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={16} isAnimationActive={false}>
+                    <LabelList dataKey="count" position="right" style={{ fontSize: 11, fill: "var(--seo-text-light)" }} />
+                    {rollup.topFailing.map((f, i) => (
+                      <Cell key={i} fill={severityColor(f.severity).text} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </Card>
