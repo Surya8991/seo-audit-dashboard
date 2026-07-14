@@ -2,6 +2,7 @@
 
 import ipaddress
 import re
+import socket
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -17,8 +18,38 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ── SSRF protection ────────────────────────────────────────────────────────────
 _BLOCKED_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"}
 
+
+class BlockedURLError(requests.RequestException):
+    """A URL (or one of its redirect targets) failed SSRF validation.
+
+    Subclasses requests.RequestException so existing `except requests.RequestException`
+    handlers treat a blocked URL as a clean fetch failure rather than crashing.
+    """
+
+
+def _ip_is_blocked(ip_str: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
+    return (
+        addr.is_private or addr.is_loopback or addr.is_link_local
+        or addr.is_reserved or addr.is_multicast or addr.is_unspecified
+    )
+
+
 def validate_audit_url(url: str) -> tuple[bool, str]:
-    """Block SSRF attempts: private IPs, loopback, link-local, metadata endpoints."""
+    """Block SSRF attempts: private/reserved IPs, loopback, link-local, and
+    hostnames that *resolve* to any of those (e.g. a public-looking domain
+    whose DNS points at 169.254.169.254 or an internal host).
+
+    Note: this is not fully DNS-rebinding-proof (that would require pinning the
+    resolved IP through the socket connection); resolution failures degrade
+    gracefully to "allow" so a transient DNS hiccup or an offline unit-test
+    environment doesn't reject a legitimate URL. Combined with per-hop redirect
+    re-validation in `safe_get`, it blocks the realistic metadata/internal-host
+    attacks.
+    """
     try:
         p = urlparse(url)
         if p.scheme not in ("http", "https"):
@@ -28,15 +59,54 @@ def validate_audit_url(url: str) -> tuple[bool, str]:
             return False, "URL has no hostname."
         if host in _BLOCKED_HOSTS:
             return False, "Loopback/local addresses are not allowed."
+        # Literal IP: check directly, no DNS needed.
         try:
-            addr = ipaddress.ip_address(host)
-            if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
+            ipaddress.ip_address(host)
+            if _ip_is_blocked(host):
                 return False, "Private or reserved IP addresses are not allowed."
+            return True, ""
         except ValueError:
-            pass  # hostname, not raw IP: allow
+            pass  # it's a hostname, resolve it below
+        # Hostname: reject if any resolved address is private/reserved.
+        try:
+            infos = socket.getaddrinfo(host, None)
+        except (socket.gaierror, OSError, UnicodeError):
+            return True, ""  # can't resolve; the fetch itself will fail/connect publicly
+        for info in infos:
+            if _ip_is_blocked(info[4][0]):
+                return False, "Hostname resolves to a private or reserved IP address."
         return True, ""
     except Exception:
         return False, "Invalid URL format."
+
+
+def safe_get(url: str, *, max_redirects: int = 10, **kwargs):
+    """SSRF-safe `requests.get`: follows redirects manually, re-validating the
+    initial URL and every hop with `validate_audit_url`, so a public URL that
+    301s to an internal/metadata host is blocked mid-chain instead of being
+    fetched. Returns the final requests.Response with `.history` populated.
+
+    Raises `BlockedURLError` if any hop fails validation, and
+    `requests.TooManyRedirects` past `max_redirects`.
+    """
+    kwargs.setdefault("headers", HEADERS)
+    kwargs.setdefault("timeout", TIMEOUT)
+    kwargs["allow_redirects"] = False
+    current = url
+    history = []
+    for _ in range(max_redirects + 1):
+        ok, msg = validate_audit_url(current)
+        if not ok:
+            raise BlockedURLError(msg)
+        resp = requests.get(current, **kwargs)
+        if resp.is_redirect and resp.headers.get("Location"):
+            history.append(resp)
+            current = urljoin(current, resp.headers["Location"])
+            continue
+        resp.history = history
+        return resp
+    raise requests.TooManyRedirects(f"Exceeded {max_redirects} redirects")
+
 
 HEADERS = {
     "User-Agent": (
@@ -69,10 +139,13 @@ def _issue(issue, category, severity, recommendation, impact_score=5, effort="Me
 
 
 def fetch_page(url):
-    """Fetch URL with proper encoding detection and error handling."""
+    """Fetch URL with proper encoding detection and error handling.
+
+    Uses safe_get so redirect targets are SSRF-validated per hop (a public URL
+    that redirects to an internal/metadata host is blocked mid-chain).
+    """
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT,
-                            allow_redirects=True, verify=True)
+        resp = safe_get(url, verify=True)
         # Use detected encoding, fall back to apparent then utf-8
         if resp.encoding and resp.encoding.lower() not in ("utf-8", "utf8"):
             try:
@@ -98,8 +171,7 @@ def fetch_page(url):
         }
     except requests.exceptions.SSLError:
         try:
-            resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT,
-                                allow_redirects=True, verify=False)
+            resp = safe_get(url, verify=False)
             text = resp.content.decode("utf-8", errors="replace")
             soup = BeautifulSoup(text, "lxml")
             return {
@@ -637,10 +709,12 @@ def audit_url(url, audit_type="auto", check_links=True, validate_links=False,
         result["blog_audit"] = audit_blog_page(soup, url)
 
     all_issues = []
-    # "headings" is intentionally omitted: heading_detail covers the same checks
-    # more thoroughly, and including both would double-count heading issues.
+    # "headings" and "images" are intentionally omitted: heading_detail and
+    # image_detail cover the same checks more thoroughly (they're also the
+    # versions modules/scoring.py scores against), and including the legacy
+    # blocks too would double-count heading and alt-text issues.
     for key in ["metadata", "canonical", "indexability", "url_structure",
-                "content", "images", "heading_detail", "image_detail",
+                "content", "heading_detail", "image_detail",
                 "advanced", "redirect_analysis", "mobile_audit", "site_health",
                 "internal_links", "external_links", "course_audit", "blog_audit"]:
         all_issues.extend(result.get(key, {}).get("issues", []))

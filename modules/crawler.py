@@ -121,7 +121,16 @@ def _extract_internal_links(soup, base_url: str, seed_domain: str, config: Crawl
 # ── Sitemap-based seeding ──────────────────────────────────────────────────────
 
 def _fetch_sitemap_locs(sitemap_url: str):
-    """Return (list of <loc> URLs, is_sitemap_index) for a sitemap URL, or ([], False) on failure."""
+    """Return (list of <loc> URLs, is_sitemap_index) for a sitemap URL, or ([], False) on failure.
+
+    SSRF guard: sitemap URLs are attacker-controlled (they come from the
+    target's own robots.txt `Sitemap:` directives and from nested
+    <sitemapindex> entries), so validate each before fetching to stop a
+    malicious sitemap from pointing the crawler at internal hosts.
+    """
+    ok, _ = validate_audit_url(sitemap_url)
+    if not ok:
+        return [], False
     try:
         r = requests.get(sitemap_url, headers=DEFAULT_HEADERS, timeout=TIMEOUT, verify=True)
         if r.status_code != 200:

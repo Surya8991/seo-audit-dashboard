@@ -31,7 +31,7 @@ THEMES = {
     "Links":        ["Internal Links", "External Links"],
     "Technical":    ["Canonical", "Technical", "Mobile", "Performance"],
     "Social & Schema": ["Structured Data", "Social SEO", "International SEO"],
-    "Images":       ["Images"],
+    "Images":       ["Images", "Image SEO"],
     "Site Health":  ["Site Health"],
     "Page-Specific": ["Course Content", "Blog Content", "Conversion"],
 }

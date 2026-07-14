@@ -7,6 +7,8 @@ from urllib.parse import urlparse, urljoin
 import requests
 from bs4 import BeautifulSoup
 
+from modules.auditor import validate_audit_url
+
 # Browser-like headers: avoids 403/999 bot blocks on LinkedIn, McKinsey, etc.
 HEADERS = {
     "User-Agent": (
@@ -313,6 +315,24 @@ def validate_url(url):
     """HTTP-check a URL. Returns status, health, label."""
     domain = get_full_domain(url)
     base   = get_base_domain(url)
+
+    # SSRF guard: links come from untrusted third-party page HTML. Refuse to
+    # HTTP-check any URL pointing at a private/reserved/internal host (directly
+    # or via DNS), so a crafted <a href="http://169.254.169.254/..."> can't be
+    # used to probe internal services.
+    ok, _ssrf_msg = validate_audit_url(url)
+    if not ok:
+        return {
+            "url": url,
+            "status_code": 0,
+            "status_label": "Blocked (internal address)",
+            "health": "blocked",
+            "is_broken": False,
+            "is_redirect": False,
+            "final_url": url,
+            "redirect_count": 0,
+            "note": "Skipped: refuses to fetch private/internal addresses",
+        }
 
     if base in KNOWN_BLOCKER_DOMAINS:
         return {
