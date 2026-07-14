@@ -18,19 +18,36 @@ prior standalone Streamlit SEO audit tool ported in on top.
 
 ## Key directories/files
 - `app/` — Next.js pages: dashboard (`/`), **`technical-audit`** (single URL /
-  sitemap / CSV-paste multi-input audit — formerly `new-audit`), results,
-  detail, links, headings, performance, export, settings
+  sitemap / crawl / CSV-paste multi-input audit — formerly `new-audit`),
+  results, detail, links, headings, performance, export, settings
 - `api/audit.py` — runs a full audit for one URL, returns `modules.auditor.audit_url()` almost verbatim
 - `api/sitemap.py` — resolves a sitemap (or bare domain) to a URL list for the
   sitewide Technical Audit; see "Sitewide/bulk audit architecture" below
+- `api/crawl.py` — discovery-only BFS crawl (no sitemap needed): given a seed
+  URL, follows internal links to build a URL list, same contract shape as
+  `api/sitemap.py` (`{urls, total_found, capped}`). Always calls
+  `crawl_site(..., run_full_audit=False)` — per-page SEO audits happen via the
+  same client orchestrator as the other bulk modes, not inside this endpoint.
 - `api/ai-summary.py` — Groq AI plain-English summary endpoint
 - `api/pagespeed.py`, `api/export.py`, `api/config-status.py`
-- `modules/auditor.py` — core fetch + orchestration, SSRF guard (`validate_audit_url`)
+- `modules/auditor.py` — core fetch + orchestration, SSRF guard (`validate_audit_url`).
+  `audit_url(..., prefetched=None)` accepts an already-fetched page (the shape
+  `fetch_page()` returns) to avoid a duplicate fetch when a caller (e.g.
+  `modules/crawler.py`) already has the page in hand.
 - `modules/sitemap_extractor.py` — sitemap/sitemap-index fetch + recursion
   (depth cap 5), gzip support, SSRF-validated, dedup + include/exclude filter
   + URL cap (default 50, max 200). Adapts the parse logic already in
   `technical_checks.py::check_sitemap` (which only counts URLs — this module
   returns them).
+- `modules/crawler.py` — `CrawlConfig` + `crawl_site()`: BFS link-discovery
+  crawl with seed selection (homepage/sitemap/URL list), scope control
+  (domain/subdomain + include/exclude regex + depth/page caps), UA presets
+  (default/googlebot/googlebot-mobile/bingbot), and 3 robots.txt modes
+  (respect/ignore/ignore_but_report). `run_full_audit=True` will also run
+  `audit_url()` per discovered page (useful for CLI/synchronous use, but NOT
+  what `api/crawl.py` uses — see above). Adopted from the `venkataramana-work`
+  branch of this repo (do not delete that branch — it has a phases.md roadmap
+  for a future async job-queue crawl architecture, phases 2-6, not yet built here).
 - `modules/technical_checks.py` — domain age (WHOIS), SSL, HTTPS enforcement
   (does http:// redirect to https://?), DNS/SPF/DMARC/MX, robots.txt,
   sitemap.xml, readability, content freshness, canonical-loop detection,
@@ -75,13 +92,17 @@ npm run dev
 
 ## Sitewide/bulk audit architecture
 The Technical Audit page (`app/technical-audit/page.tsx`) supports Single URL,
-Sitemap, and CSV/Paste modes. Because this app is stateless Vercel serverless
-(no DB, no long-lived process, no SSE, 60s/function cap — see `vercel.json`),
-sitewide crawls are **client-orchestrated**, not server-orchestrated like the
-reference tool (which uses a long-lived Flask process + daemon thread + SSE +
-on-disk checkpointing — that model does NOT port here):
-1. `api/sitemap.py` (or the client-side CSV/paste parser) resolves a bounded
-   URL list — one fast invocation, well under 60s even for a 2,000+ URL sitemap.
+Sitemap, Crawl-from-URL, and CSV/Paste modes. Because this app is stateless
+Vercel serverless (no DB, no long-lived process, no SSE, 60s/function cap —
+see `vercel.json`), sitewide audits are **client-orchestrated**, not
+server-orchestrated like the reference tools (SEO Suite uses a long-lived
+Flask process + daemon thread + SSE + on-disk checkpointing; the
+`venkataramana-work` branch's own crawl roadmap plans an async job-queue —
+neither model ports here as-is):
+1. One of three URL-resolution steps runs first, each bounded and fast enough
+   to fit in a single invocation: `api/sitemap.py` (sitemap/sitemap-index
+   fetch), `api/crawl.py` (BFS link discovery, `run_full_audit=False`), or the
+   client-side CSV/paste parser (no network call at all).
 2. The browser (`lib/crawl/orchestrator.ts::runCrawl`) fans out bounded-
    concurrency single-URL `POST /api/audit` calls — one invocation per URL, so
    nothing risks the function timeout.
@@ -161,3 +182,18 @@ Edstellar sitemap/pages and take 30+ seconds; opt in with `RUN_LIVE_TESTS=1`.
   routes in this repo's sessions has instead relied on (a) pytest hitting the
   Python modules directly, and (b) mocking `window.fetch` in the browser to
   verify the client-side orchestrator/UI wiring independently.
+- `modules/crawler.py::crawl_site()` supports `run_full_audit=True` (runs
+  `audit_url()` per discovered page, synchronously, inside the crawl loop) —
+  **`api/crawl.py` always passes `run_full_audit=False`**. Don't flip that:
+  with the default `max_pages=50` and a real per-page audit taking 1-5s each,
+  a synchronous full-audit crawl risks the 60s Vercel cap. Discovery and
+  per-page auditing are deliberately two separate steps here (discovery in
+  `api/crawl.py`, auditing via the browser's `lib/crawl/orchestrator.ts`),
+  unlike the `venkataramana-work` branch's own single-endpoint design.
+- The `venkataramana-work` branch (`git fetch origin venkataramana-work`) has
+  a `phases.md` with a fuller crawl-feature roadmap (async job queue +
+  SQLite/Postgres persistence, resumable `crawl_step`, optional Playwright JS
+  rendering, site-wide score aggregation, dedicated `/crawl` UI) — worth
+  reading before extending crawl further. Not merged wholesale; only
+  `modules/crawler.py` + its tests + the `auditor.py` `prefetched` param were
+  adopted so far. Do not delete this branch.

@@ -13,7 +13,7 @@ import {
   type CrawlProgress,
 } from "@/lib/crawl/orchestrator";
 
-type InputMode = "single" | "sitemap" | "list";
+type InputMode = "single" | "sitemap" | "list" | "crawl";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -21,6 +21,7 @@ const MAX_LIMIT = 200;
 const MODES: { id: InputMode; label: string; icon: string; hint: string }[] = [
   { id: "single", label: "Single URL", icon: "🔗", hint: "Audit one page." },
   { id: "sitemap", label: "Sitemap", icon: "🗺️", hint: "Sitewide audit from sitemap.xml." },
+  { id: "crawl", label: "Crawl from URL", icon: "🕷️", hint: "Discover pages by following links — no sitemap needed." },
   { id: "list", label: "CSV / Paste URLs", icon: "📄", hint: "Bulk audit a list of URLs." },
 ];
 
@@ -42,6 +43,12 @@ export default function TechnicalAuditPage() {
   const [sitemapUrl, setSitemapUrl] = useState("");
   const [includePattern, setIncludePattern] = useState("");
   const [excludePattern, setExcludePattern] = useState("");
+
+  // Crawl from URL
+  const [crawlSeedUrl, setCrawlSeedUrl] = useState("");
+  const [includeSubdomains, setIncludeSubdomains] = useState(false);
+  const [robotsMode, setRobotsMode] = useState<"respect" | "ignore" | "ignore_but_report">("respect");
+  const [maxDepth, setMaxDepth] = useState(3);
 
   // List / CSV
   const [pastedList, setPastedList] = useState("");
@@ -101,6 +108,36 @@ export default function TechnicalAuditPage() {
       setResolvedCount({ found: parsed.urls.length, capped: parsed.urls.length > limit });
       return capped;
     }
+
+    if (mode === "crawl") {
+      if (!crawlSeedUrl.trim()) {
+        setError("Enter a URL to start crawling from.");
+        return null;
+      }
+      setPhase("resolving");
+      const res = await fetch("/api/crawl", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          seedUrl: crawlSeedUrl.trim(),
+          maxPages: limit,
+          maxDepth,
+          includeSubdomains,
+          robotsMode,
+          includePattern: includePattern.trim() || undefined,
+          excludePattern: excludePattern.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Crawl failed.");
+        setPhase("idle");
+        return null;
+      }
+      setResolvedCount({ found: data.total_found, capped: data.capped });
+      return data.urls as string[];
+    }
+
     // sitemap
     if (!sitemapUrl.trim()) {
       setError("Enter a sitemap URL or domain.");
@@ -182,11 +219,11 @@ export default function TechnicalAuditPage() {
     <div className="max-w-2xl">
       <PageHeader
         title="🚀 Technical Audit"
-        subtitle="Run a technical SEO audit on a single URL, an entire sitemap, or a list of URLs."
+        subtitle="Run a technical SEO audit on a single URL, an entire sitemap, a crawl, or a list of URLs."
       />
 
       {/* Mode selector */}
-      <div className="mb-4 grid grid-cols-3 gap-2">
+      <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4">
         {MODES.map((m) => (
           <button
             key={m.id}
@@ -252,6 +289,71 @@ export default function TechnicalAuditPage() {
                   />
                 </Field>
               </div>
+            </>
+          ) : null}
+
+          {mode === "crawl" ? (
+            <>
+              <Field label="Start URL">
+                <input
+                  type="url"
+                  placeholder="https://www.example.com/"
+                  value={crawlSeedUrl}
+                  onChange={(e) => setCrawlSeedUrl(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Include pattern (regex, optional)">
+                  <input
+                    type="text"
+                    placeholder="/blog/"
+                    value={includePattern}
+                    onChange={(e) => setIncludePattern(e.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Exclude pattern (regex, optional)">
+                  <input
+                    type="text"
+                    placeholder="/tag/|/author/"
+                    value={excludePattern}
+                    onChange={(e) => setExcludePattern(e.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Max crawl depth">
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={maxDepth}
+                    onChange={(e) => setMaxDepth(Math.max(1, Math.min(10, Number(e.target.value) || 3)))}
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="robots.txt handling">
+                  <select
+                    value={robotsMode}
+                    onChange={(e) => setRobotsMode(e.target.value as typeof robotsMode)}
+                    className={inputClass}
+                  >
+                    <option value="respect">Respect (skip disallowed)</option>
+                    <option value="ignore_but_report">Ignore but report</option>
+                    <option value="ignore">Ignore</option>
+                  </select>
+                </Field>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-[var(--seo-text)]">
+                <input
+                  type="checkbox"
+                  checked={includeSubdomains}
+                  onChange={(e) => setIncludeSubdomains(e.target.checked)}
+                />
+                Include subdomains
+              </label>
             </>
           ) : null}
 

@@ -482,7 +482,7 @@ def detect_page_type(url, soup):
 
 
 def audit_url(url, audit_type="auto", check_links=True, validate_links=False,
-              fetch_pagespeed=False, psi_api_key=None):
+              fetch_pagespeed=False, psi_api_key=None, prefetched=None):
     # SSRF protection — block private/internal URLs before making any outbound request
     ok, ssrf_msg = validate_audit_url(url)
     if not ok:
@@ -525,7 +525,7 @@ def audit_url(url, audit_type="auto", check_links=True, validate_links=False,
         "technical_audit_checklist": {},
     }
 
-    fetch = fetch_page(url)
+    fetch = prefetched if prefetched is not None else fetch_page(url)
     if not fetch["success"]:
         result["fetch_error"] = fetch.get("error", "Unknown error")
         result["status_code"] = fetch.get("status_code", 0)

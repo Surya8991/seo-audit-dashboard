@@ -1,6 +1,6 @@
 # PROJECT_LOG — SEO Technical Audit Dashboard
 
-> **Last updated:** 2026-07-14 · **Session:** 4 · **Version:** v0.3.0 (pre-release)
+> **Last updated:** 2026-07-14 · **Session:** 5 · **Version:** v0.4.0 (pre-release)
 > Master log — read in full before touching code. Mirrors the format of the
 > SEO Suite project's `PROJECT_LOG.md` (60-second resume → Do NOT → Current
 > State → Phases → Session History).
@@ -149,6 +149,33 @@ interactive account linking (hangs headless) — so verification split two ways:
 orchestrator/UI end-to-end (mode switch, progress bar, cancel, batched
 persistence, rollup card, results table) — confirmed working via screenshots.
 
+### PHASE 1g — Crawl-from-URL (4th input mode)  ✅ COMPLETE (v0.4.0)
+User pointed at a fetched-but-unmerged remote branch, `origin/venkataramana-work`
+(`git fetch origin venkataramana-work` — **do not delete this branch**), which
+contained `modules/crawler.py` (BFS link-discovery crawl, Phase 1 of its own
+`phases.md` roadmap for a fuller async job-queue crawl architecture — phases
+2-6 of that roadmap are NOT built here, just the Phase 1 crawler module) plus
+`tests/test_crawler.py` and a small `audit_url(..., prefetched=None)` addition
+to `modules/auditor.py` (avoids a duplicate fetch when the caller already has
+the page). All copied over and verified working unmodified (11/11 existing
+tests pass against our current codebase).
+
+Adapted the API boundary to fit our client-orchestrated architecture: the
+branch's `crawl_site()` supports `run_full_audit=True` (synchronous per-page
+audit_url() calls inside the crawl loop — risks the 60s Vercel cap at the
+default max_pages=50), but `api/crawl.py` always calls it with
+`run_full_audit=False` — discovery only, same `{urls, total_found, capped}`
+contract shape as `api/sitemap.py`. Per-page auditing happens through the
+existing `lib/crawl/orchestrator.ts`, exactly like sitemap/CSV mode.
+
+Added to `app/technical-audit/page.tsx` as "Crawl from URL" (4th mode, 4-column
+grid): start URL, include/exclude regex, max depth (1-10), robots.txt handling
+(respect/ignore/ignore_but_report), include-subdomains toggle, shared bulk
+options (limit/concurrency). New unit test (`test_discovery_only_mode_skips_per_page_audit`)
++ opt-in live test (`test_live_edstellar_discovery_crawl` — 10 real pages
+discovered via BFS in ~4s). Verified end-to-end in-browser via mocked
+`window.fetch` (mode select → 6/6 crawled + audited → results).
+
 ### PHASE 2 — Sitewide efficiency  ⏳ PLANNED  *(after Phase 1 works)*
 - Add `skip_site_health` param to `audit_url()`. In sitewide mode, run
   domain-level `analyze_site_health()` **once**, then per-page audits reuse
@@ -204,4 +231,5 @@ explicitly unpaused.
 | 1 | 2026-07 | v0.1.0 | Merged Next.js SEO audit dashboard (base) + ported Streamlit site-health checks & Groq AI summary. |
 | 2 | 2026-07-14 | v0.2.0 | SEO-Suite-style UI rebuild (indigo/violet gradient, dark sidebar, light/dark toggle, conic score circles, pill badges, mobile drawer). Technical SEO Audit use-case parity: `technical_audit_checklist.py` (35-check pass/warn/fail view) + `check_https_enforcement` + X-Robots-Tag nofollow; new detail "Technical Audit" tab; pytest harness + 23 tests; `agents.md` updated. |
 | 3 | 2026-07-14 | v0.2.0 | Research + this PROJECT_LOG. Scoped multi-input Technical Audit (single/sitemap/CSV), nav restructure, trimmed Phase C. Confirmed client-orchestrated architecture (serverless + localStorage constraint). Probed Edstellar sitemap (2,461 URLs). Plan signed off (route→`/technical-audit`, cap 50/200, concurrency 5/10, remove Link Graph nav). Pushed UI rebuild + Technical Audit checklist commits to `origin/main`. |
-| 4 | 2026-07-14 | v0.3.0 | **Phase 0+1 shipped.** Nav restructure (Technical Audit rename/route move, collapsible Additional Tools section, removed Quick Tools/Link Graph). Multi-input Technical Audit: sitemap extractor (index recursion, gzip, SSRF-safe) + `api/sitemap.py`, client CSV/paste parser, bounded-concurrency crawl orchestrator, batched `addResults`, 3-mode input UI with live progress, sitewide rollup card. Added Vitest for frontend unit tests (11 passing) alongside pytest (32 passing, 2 live tests opt-in). Verified end-to-end: real pipeline test against edstellar.com/sitemap.xml (2,461 URLs resolved, 3 real pages audited) + mocked-fetch in-browser UI walkthrough (mode switch → progress → results → rollup, all screenshotted). |
+| 4 | 2026-07-14 | v0.3.0 | **Phase 0+1 shipped.** Nav restructure (Technical Audit rename/route move, collapsible Additional Tools section, removed Quick Tools/Link Graph). Multi-input Technical Audit: sitemap extractor (index recursion, gzip, SSRF-safe) + `api/sitemap.py`, client CSV/paste parser, bounded-concurrency crawl orchestrator, batched `addResults`, 3-mode input UI with live progress, sitewide rollup card. Added Vitest for frontend unit tests (11 passing) alongside pytest (32 passing, 2 live tests opt-in). Verified end-to-end: real pipeline test against edstellar.com/sitemap.xml (2,461 URLs resolved, 3 real pages audited) + mocked-fetch in-browser UI walkthrough (mode switch → progress → results → rollup, all screenshotted). Pushed both commits to `origin/main`. |
+| 5 | 2026-07-14 | v0.4.0 | Made "Additional Tools" nav section collapsible (persisted, auto-expands on active route). **Phase 1g: Crawl-from-URL.** User pointed at unmerged remote branch `origin/venkataramana-work` (fetched, not deleted) — contained a well-tested BFS `modules/crawler.py` (`CrawlConfig`/`crawl_site`, seed selection, scope control, UA presets, 3 robots.txt modes) + `tests/test_crawler.py` + a small `prefetched` param on `audit_url()`. Adopted the crawler module as-is (11/11 tests pass unmodified); adapted the API boundary to our client-orchestrated model — `api/crawl.py` always runs discovery-only (`run_full_audit=False`), never the branch's synchronous per-page-audit mode, to stay under the 60s cap. Added as 4th Technical Audit input mode. New/live tests added and passing (44 pytest total, 3 opt-in skipped, 11 vitest). Verified end-to-end via mocked-fetch in-browser walkthrough. Branch also has a `phases.md` roadmap (async job queue, JS rendering, site scoring, dedicated crawl UI) for future phases — not built yet. |
