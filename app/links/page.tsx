@@ -664,7 +664,7 @@ function LinkTable({
           <span className="text-xs text-[var(--seo-muted)]">{sorted.length} link(s)</span>
           <button
             onClick={downloadCurrentView}
-            className="ml-auto rounded-lg bg-[var(--seo-accent)] px-3 py-1.5 text-xs font-semibold text-white"
+            className="ml-auto rounded-lg btn-gradient px-3 py-1.5 text-xs font-semibold text-white"
           >
             Download This View ({sorted.length})
           </button>

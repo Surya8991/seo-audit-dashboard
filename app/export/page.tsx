@@ -72,7 +72,7 @@ export default function ExportPage() {
               type="button"
               onClick={() => handleExport(f.id)}
               disabled={loadingFormat !== null}
-              className="mt-3 w-full rounded-lg bg-[var(--seo-accent)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              className="mt-3 w-full rounded-lg btn-gradient px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
             >
               {loadingFormat === f.id ? "Generating…" : `Download ${f.label}`}
             </button>

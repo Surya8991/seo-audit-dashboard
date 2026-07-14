@@ -1,9 +1,11 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 
-/* Design tokens ported from legacy-streamlit/assets/style.css (Bento Edition) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Design tokens — indigo/violet brand, light default + dark override */
 :root {
-  --seo-app-bg: #F0F2F7;
+  --seo-app-bg: #F5F7FB;
   --seo-card-bg: #FFFFFF;
   --seo-card-bg-alt: #F8FAFC;
   --seo-card-hover: #F1F5F9;
@@ -20,50 +22,83 @@
   --seo-muted: #94A3B8;
   --seo-placeholder: #CBD5E1;
 
-  --seo-accent: #0369A1;
-  --seo-accent-2: #0284C7;
-  --seo-accent-light: rgba(3, 105, 161, 0.07);
-  --seo-accent-border: rgba(3, 105, 161, 0.22);
-  --seo-gradient: linear-gradient(135deg, #0F172A, #1E3A5F);
+  --seo-accent: #6366F1;
+  --seo-accent-2: #8B5CF6;
+  --seo-accent-light: rgba(99, 102, 241, 0.08);
+  --seo-accent-border: rgba(99, 102, 241, 0.24);
+  --seo-gradient: linear-gradient(135deg, #6366F1, #8B5CF6);
 
-  --seo-success: #059669;
-  --seo-success-bg: rgba(5, 150, 105, 0.08);
-  --seo-success-border: rgba(5, 150, 105, 0.20);
-  --seo-warning: #D97706;
-  --seo-warning-bg: rgba(217, 119, 6, 0.08);
-  --seo-warning-border: rgba(217, 119, 6, 0.20);
-  --seo-error: #DC2626;
-  --seo-error-bg: rgba(220, 38, 38, 0.08);
-  --seo-error-border: rgba(220, 38, 38, 0.20);
-  --seo-info: #0369A1;
-  --seo-info-bg: rgba(3, 105, 161, 0.07);
-  --seo-info-border: rgba(3, 105, 161, 0.18);
+  --seo-success: #10B981;
+  --seo-success-bg: rgba(16, 185, 129, 0.08);
+  --seo-success-border: rgba(16, 185, 129, 0.20);
+  --seo-warning: #F59E0B;
+  --seo-warning-bg: rgba(245, 158, 11, 0.08);
+  --seo-warning-border: rgba(245, 158, 11, 0.20);
+  --seo-error: #EF4444;
+  --seo-error-bg: rgba(239, 68, 68, 0.08);
+  --seo-error-border: rgba(239, 68, 68, 0.20);
+  --seo-info: #6366F1;
+  --seo-info-bg: rgba(99, 102, 241, 0.07);
+  --seo-info-border: rgba(99, 102, 241, 0.18);
 
-  --sev-critical: #DC2626;
-  --sev-critical-bg: rgba(220, 38, 38, 0.08);
-  --sev-high: #EA580C;
-  --sev-high-bg: rgba(234, 88, 12, 0.08);
-  --sev-warning: #D97706;
-  --sev-warning-bg: rgba(217, 119, 6, 0.08);
+  --sev-critical: #EF4444;
+  --sev-critical-bg: rgba(239, 68, 68, 0.08);
+  --sev-high: #F97316;
+  --sev-high-bg: rgba(249, 115, 22, 0.08);
+  --sev-warning: #F59E0B;
+  --sev-warning-bg: rgba(245, 158, 11, 0.08);
   --sev-medium: #CA8A04;
   --sev-medium-bg: rgba(202, 138, 4, 0.08);
-  --sev-low: #0369A1;
-  --sev-low-bg: rgba(3, 105, 161, 0.08);
+  --sev-low: #6366F1;
+  --sev-low-bg: rgba(99, 102, 241, 0.08);
 
-  --cwv-good-bg: rgba(5, 150, 105, 0.09);
+  --cwv-good-bg: rgba(16, 185, 129, 0.09);
   --cwv-good-text: #065F46;
-  --cwv-needs-bg: rgba(217, 119, 6, 0.09);
+  --cwv-needs-bg: rgba(245, 158, 11, 0.09);
   --cwv-needs-text: #92400E;
-  --cwv-poor-bg: rgba(220, 38, 38, 0.09);
+  --cwv-poor-bg: rgba(239, 68, 68, 0.09);
   --cwv-poor-text: #991B1B;
 
   --table-header-bg: #F8FAFC;
   --table-row-border: rgba(15, 23, 42, 0.06);
-  --table-row-hover: rgba(3, 105, 161, 0.03);
+  --table-row-hover: rgba(99, 102, 241, 0.03);
 
-  --seo-banner-bg: linear-gradient(135deg, #0F172A 0%, #1E3A5F 100%);
-  --seo-banner-text: #F1F5F9;
-  --seo-banner-muted: #94A3B8;
+  --seo-banner-bg: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+  --seo-banner-text: #F5F3FF;
+  --seo-banner-muted: #C4B5FD;
+
+  --seo-sidebar-bg: #13131F;
+  --seo-sidebar-text: #C7C7D9;
+  --seo-sidebar-text-active: #FFFFFF;
+  --seo-sidebar-hover: rgba(255, 255, 255, 0.06);
+  --seo-radius: 14px;
+
+  --seo-score-track: #E5E7EB;
+}
+
+.dark {
+  --seo-app-bg: #0B0B14;
+  --seo-card-bg: #16161F;
+  --seo-card-bg-alt: #1B1B27;
+  --seo-card-hover: #21212E;
+  --seo-border: rgba(255, 255, 255, 0.08);
+  --seo-border-strong: rgba(255, 255, 255, 0.16);
+
+  --seo-heading: #F5F5FA;
+  --seo-subheading: #E4E4EF;
+  --seo-text: #C7C7D9;
+  --seo-text-light: #A5A5BD;
+  --seo-muted: #7A7A95;
+  --seo-placeholder: #4B4B63;
+
+  --seo-accent-light: rgba(99, 102, 241, 0.16);
+  --seo-accent-border: rgba(99, 102, 241, 0.36);
+
+  --table-header-bg: #1B1B27;
+  --table-row-border: rgba(255, 255, 255, 0.06);
+  --table-row-hover: rgba(99, 102, 241, 0.08);
+
+  --seo-score-track: #26263A;
 }
 
 @theme inline {
@@ -117,11 +152,72 @@ body {
 .card {
   background: var(--seo-card-bg);
   border: 1px solid var(--seo-border);
-  border-radius: 0.75rem;
+  border-radius: var(--seo-radius);
   box-shadow: var(--seo-shadow-sm);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .banner {
   background: var(--seo-banner-bg);
   color: var(--seo-banner-text);
+}
+
+.gradient-text {
+  background: var(--seo-gradient);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.btn-gradient {
+  background: var(--seo-gradient);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-gradient:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.45);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  padding: 0.15rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* CSS conic-gradient score circle. Usage: <div class="score-circle" style="--score-color:#10B981;--score-deg:324deg"><span>90</span></div> */
+.score-circle {
+  --score-size: 72px;
+  position: relative;
+  width: var(--score-size);
+  height: var(--score-size);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: conic-gradient(var(--score-color) var(--score-deg), var(--seo-score-track) 0deg);
+}
+
+.score-circle::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: var(--seo-card-bg);
+}
+
+.score-circle span {
+  position: relative;
+  z-index: 1;
+  font-weight: 700;
+  color: var(--seo-heading);
+  font-size: calc(var(--score-size) * 0.28);
 }

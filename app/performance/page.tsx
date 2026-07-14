@@ -189,7 +189,7 @@ export default function PerformancePage() {
                 type="button"
                 onClick={fetchLivePsi}
                 disabled={psiLoading}
-                className="rounded-lg bg-[var(--seo-accent)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                className="rounded-lg btn-gradient px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
               >
                 {psiLoading ? "Fetching…" : "Fetch Live PSI"}
               </button>
@@ -493,7 +493,7 @@ function ImageSeoTab({ results, showSource }: { results: AuditResult[]; showSour
           <span className="text-xs text-[var(--seo-muted)]">{sorted.length} image(s)</span>
           <button
             onClick={downloadView}
-            className="ml-auto rounded-lg bg-[var(--seo-accent)] px-3 py-1.5 text-xs font-semibold text-white"
+            className="ml-auto rounded-lg btn-gradient px-3 py-1.5 text-xs font-semibold text-white"
           >
             Download {selected.size > 0 ? `Selected (${selected.size})` : `This View (${sorted.length})`}
           </button>
