@@ -5,6 +5,7 @@ import { useAudit } from "@/lib/state/AuditContext";
 import { Card, EmptyState, IssueRow, PageHeader, ScoreBadge, StatusPill } from "@/components/ui";
 import { getThematicIssues, getTopIssuesByImpact } from "@/lib/aggregate";
 import { WEIGHTS } from "@/lib/scoring";
+import { scoreColor } from "@/lib/format";
 import type { ChecklistItem } from "@/lib/types";
 import { CHECK_DEFS, GROUP_HELP, GROUP_LABELS } from "@/lib/checklistDefs";
 import { HelpDialog } from "@/components/HelpDialog";
@@ -63,7 +64,7 @@ function ChecklistGroupCard({
   );
 }
 
-function BoolBadge({ ok }: { ok: boolean }) {
+function BoolBadge({ ok, yes = "Pass", no = "Fail" }: { ok: boolean; yes?: string; no?: string }) {
   return (
     <span
       className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
@@ -72,7 +73,33 @@ function BoolBadge({ ok }: { ok: boolean }) {
         backgroundColor: ok ? "var(--seo-success-bg)" : "var(--seo-error-bg)",
       }}
     >
-      {ok ? "Pass" : "Fail"}
+      {ok ? yes : no}
+    </span>
+  );
+}
+
+// A labelled row (label left, value/badge right) for the structured Technical tab.
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-[var(--seo-border)] py-2 text-sm last:border-0">
+      <span className="text-[var(--seo-text-light)]">{label}</span>
+      <span className="max-w-[60%] truncate text-right font-medium text-[var(--seo-subheading)]">
+        {children}
+      </span>
+    </div>
+  );
+}
+
+// A coloured pill for a Core Web Vitals verdict string like "Good", "Needs Improvement", "Poor".
+function CwvBadge({ verdict }: { verdict?: string }) {
+  const v = (verdict || "").toLowerCase();
+  const good = v.includes("good") || v.includes("low");
+  const poor = v.includes("poor") || v.includes("high");
+  const color = good ? "var(--seo-success)" : poor ? "var(--seo-error)" : "var(--seo-warning)";
+  const bg = good ? "var(--seo-success-bg)" : poor ? "var(--seo-error-bg)" : "var(--seo-warning-bg)";
+  return (
+    <span className="pill" style={{ color, backgroundColor: bg }}>
+      {verdict || "N/A"}
     </span>
   );
 }
@@ -224,22 +251,25 @@ export default function DetailPage() {
               Score Breakdown
             </h3>
             <div className="flex flex-col gap-2">
-              {Object.entries(breakdown).map(([cat, val]) => (
-                <div key={cat}>
-                  <div className="flex justify-between text-xs text-[var(--seo-text-light)]">
-                    <span className="capitalize">
-                      {cat.replace(/_/g, " ")} ({Math.round((WEIGHTS[cat] || 0) * 100)}%)
-                    </span>
-                    <span>{Math.round(val as number)}</span>
+              {Object.entries(breakdown).map(([cat, val]) => {
+                const v = Math.max(0, Math.min(100, val as number));
+                return (
+                  <div key={cat}>
+                    <div className="flex justify-between text-xs text-[var(--seo-text-light)]">
+                      <span className="capitalize">
+                        {cat.replace(/_/g, " ")} ({Math.round((WEIGHTS[cat] || 0) * 100)}%)
+                      </span>
+                      <span style={{ color: scoreColor(v) }}>{Math.round(v)}</span>
+                    </div>
+                    <div className="mt-0.5 h-1.5 w-full rounded-full bg-[var(--seo-card-hover)]">
+                      <div
+                        className="h-1.5 rounded-full"
+                        style={{ width: `${v}%`, backgroundColor: scoreColor(v) }}
+                      />
+                    </div>
                   </div>
-                  <div className="mt-0.5 h-1.5 w-full rounded-full bg-[var(--seo-card-hover)]">
-                    <div
-                      className="h-1.5 rounded-full bg-[var(--seo-accent)]"
-                      style={{ width: `${Math.max(0, Math.min(100, val as number))}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </Card>
 
@@ -458,43 +488,227 @@ export default function DetailPage() {
       ) : null}
 
       {tab === "Technical" ? (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Card>
-            <h3 className="mb-3 text-sm font-semibold text-[var(--seo-subheading)]">
-              Technical SEO
-            </h3>
-            <KeyValueGrid data={r.technical_seo || {}} />
-          </Card>
-          <Card>
-            <h3 className="mb-3 text-sm font-semibold text-[var(--seo-subheading)]">
-              Advanced / Security Headers
-            </h3>
-            <KeyValueGrid
-              data={Object.fromEntries(
-                Object.entries(r.advanced || {}).filter(([k]) => k !== "technical_seo"),
-              )}
-            />
-          </Card>
-          <Card className="lg:col-span-2">
-            <h3 className="mb-3 text-sm font-semibold text-[var(--seo-subheading)]">
-              Site Health
-            </h3>
-            <KeyValueGrid
-              data={{
-                robots: r.site_health?.robots,
-                sitemap: r.site_health?.sitemap,
-                domain_age: r.site_health?.domain_age,
-                ssl: r.site_health?.ssl,
-                dns: r.site_health?.dns,
-                readability: r.site_health?.readability,
-                content_freshness: r.site_health?.content_freshness,
-                canonical_loop: r.site_health?.canonical_loop,
-                www_redirect: r.site_health?.www_redirect,
-                http2: r.site_health?.http2,
-              }}
-            />
-          </Card>
-        </div>
+        (() => {
+          const adv = r.advanced || {};
+          const tech = adv.technical_seo || r.technical_seo || {};
+          const hdr = adv.http_headers_data || {};
+          const sh = r.site_health || {};
+          const social = adv.social_preview || {};
+          const hreflang: { lang?: string; url?: string }[] = adv.hreflang_tags || [];
+          const schemaTypes: string[] = adv.schema_types || [];
+          const redirectChain: string[] = r.redirect_analysis?.chain || r.redirect_chain || [];
+          return (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {/* Core Web Vitals */}
+              <Card>
+                <h3 className="mb-3 text-sm font-semibold text-[var(--seo-subheading)]">
+                  Core Web Vitals (estimated)
+                </h3>
+                <Row label="TTFB (server response)">
+                  <CwvBadge verdict={tech.cwv_ttfb_estimate} />
+                </Row>
+                <Row label="LCP (largest paint)">
+                  <CwvBadge verdict={tech.cwv_lcp_estimate} />
+                </Row>
+                <Row label="CLS risk (layout shift)">
+                  <CwvBadge verdict={tech.cwv_cls_risk} />
+                </Row>
+                <Row label="Performance score">
+                  {tech.performance_score != null ? `${tech.performance_score}/100` : "N/A"}
+                </Row>
+                <Row label="Page size">
+                  {tech.page_size_kb != null ? `${tech.page_size_kb} KB` : "N/A"}
+                </Row>
+                <Row label="DOM elements">{tech.dom_elements ?? "N/A"}</Row>
+                <Row label="Scripts (external)">
+                  {tech.script_count != null
+                    ? `${tech.script_count} (${tech.external_script_count ?? 0} external)`
+                    : "N/A"}
+                </Row>
+                {tech.has_mixed_content ? (
+                  <Row label="Mixed content">
+                    <BoolBadge ok={false} no={`${tech.mixed_content_count ?? 0} insecure`} />
+                  </Row>
+                ) : null}
+              </Card>
+
+              {/* Security & response headers */}
+              <Card>
+                <h3 className="mb-3 text-sm font-semibold text-[var(--seo-subheading)]">
+                  Security &amp; Response Headers
+                </h3>
+                <Row label="HSTS (Strict-Transport-Security)">
+                  <BoolBadge ok={!!hdr.has_hsts} yes="Present" no="Missing" />
+                </Row>
+                <Row label="X-Frame-Options">
+                  <BoolBadge ok={!!hdr.has_x_frame_options} yes="Present" no="Missing" />
+                </Row>
+                <Row label="X-Content-Type-Options">
+                  <BoolBadge ok={!!hdr.has_x_content_type_options} yes="Present" no="Missing" />
+                </Row>
+                <Row label="Content-Security-Policy">
+                  <BoolBadge ok={!!hdr.has_csp} yes="Present" no="Missing" />
+                </Row>
+                <Row label="Compression">
+                  <BoolBadge ok={!!hdr.has_compression} yes="Enabled" no="Off" />
+                </Row>
+                <Row label="Cache-Control">{hdr.cache_control || "N/A"}</Row>
+                <Row label="Server">{hdr.server || "N/A"}</Row>
+              </Card>
+
+              {/* Structured data */}
+              <Card>
+                <h3 className="mb-3 text-sm font-semibold text-[var(--seo-subheading)]">
+                  Structured Data (JSON-LD)
+                </h3>
+                {schemaTypes.length ? (
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {schemaTypes.map((t, i) => (
+                      <span
+                        key={`${t}-${i}`}
+                        className="pill"
+                        style={{ color: "var(--seo-accent)", backgroundColor: "var(--seo-accent-light)" }}
+                      >
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mb-2 text-sm text-[var(--seo-muted)]">No structured data found.</p>
+                )}
+                <Row label="Schema parse errors">
+                  <BoolBadge ok={!(adv.schema_errors?.length)} yes="None" no={`${adv.schema_errors?.length || 0}`} />
+                </Row>
+                <Row label="Favicon">
+                  <BoolBadge ok={!!adv.has_favicon} yes="Present" no="Missing" />
+                </Row>
+                <Row label="Charset">{adv.charset_value || "N/A"}</Row>
+                <Row label="HTML lang">{adv.lang_attr || "N/A"}</Row>
+              </Card>
+
+              {/* Social / Open Graph preview */}
+              <Card>
+                <h3 className="mb-3 text-sm font-semibold text-[var(--seo-subheading)]">
+                  Social Preview (Open Graph)
+                </h3>
+                <div className="overflow-hidden rounded-lg border border-[var(--seo-border)]">
+                  {social.og_image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={social.og_image}
+                      alt="Open Graph preview"
+                      className="h-36 w-full object-cover"
+                      onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
+                    />
+                  ) : (
+                    <div className="flex h-36 w-full items-center justify-center bg-[var(--seo-card-alt)] text-xs text-[var(--seo-muted)]">
+                      No og:image set
+                    </div>
+                  )}
+                  <div className="p-3">
+                    <div className="text-xs text-[var(--seo-muted)]">{social.og_site_name || r.metadata?.title}</div>
+                    <div className="truncate text-sm font-semibold text-[var(--seo-subheading)]">
+                      {social.og_title || r.metadata?.title || "Untitled"}
+                    </div>
+                    <div className="line-clamp-2 text-xs text-[var(--seo-text-light)]">
+                      {social.og_description || r.metadata?.description || "No description set."}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <Row label="Twitter Card">{social.twitter_card_type || "N/A"}</Row>
+                </div>
+              </Card>
+
+              {/* Site Health */}
+              <Card className="lg:col-span-2">
+                <h3 className="mb-3 text-sm font-semibold text-[var(--seo-subheading)]">
+                  Site Health (domain-level)
+                </h3>
+                <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+                  <div>
+                    <Row label="SSL certificate">
+                      {sh.ssl?.valid ? (
+                        <BoolBadge ok yes={sh.ssl.days_left != null ? `Valid, ${sh.ssl.days_left}d left` : "Valid"} />
+                      ) : (
+                        <BoolBadge ok={false} no="Invalid / none" />
+                      )}
+                    </Row>
+                    <Row label="HTTPS protocol">
+                      {sh.http2?.http_version ? (
+                        <BoolBadge
+                          ok={["HTTP/2", "HTTP/3"].includes(sh.http2.http_version)}
+                          yes={sh.http2.http_version}
+                          no={sh.http2.http_version}
+                        />
+                      ) : "N/A"}
+                    </Row>
+                    <Row label="www / non-www">
+                      <BoolBadge ok={sh.www_redirect?.consolidated !== false} yes="Consolidated" no="Split" />
+                    </Row>
+                    <Row label="Domain age">
+                      {sh.domain_age?.age_years != null ? `${sh.domain_age.age_years} years` : "Unknown"}
+                    </Row>
+                    <Row label="robots.txt">
+                      <BoolBadge ok={sh.robots?.allowed !== false} yes="Allows crawl" no="Blocks page" />
+                    </Row>
+                  </div>
+                  <div>
+                    <Row label="Sitemap">
+                      {sh.sitemap?.exists ? `${sh.sitemap.url_count ?? 0} URLs` : "Not found"}
+                    </Row>
+                    <Row label="SPF record">
+                      <BoolBadge ok={!!sh.dns?.spf} yes="Set" no="Missing" />
+                    </Row>
+                    <Row label="DMARC record">
+                      <BoolBadge ok={!!sh.dns?.dmarc} yes="Set" no="Missing" />
+                    </Row>
+                    <Row label="MX records">
+                      <BoolBadge ok={!!(sh.dns?.mx?.length)} yes="Set" no="Missing" />
+                    </Row>
+                    <Row label="Readability">
+                      {sh.readability?.fk_grade != null ? `Grade ${sh.readability.fk_grade}` : "N/A"}
+                    </Row>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Hreflang (only when present) */}
+              {hreflang.length ? (
+                <Card className="lg:col-span-2">
+                  <h3 className="mb-3 text-sm font-semibold text-[var(--seo-subheading)]">
+                    International Targeting (hreflang)
+                  </h3>
+                  <div className="flex flex-col">
+                    {hreflang.map((h, i) => (
+                      <div key={`${h.lang}-${i}`} className="flex items-center justify-between gap-3 border-b border-[var(--seo-border)] py-1.5 text-sm last:border-0">
+                        <span className="font-mono text-xs text-[var(--seo-accent)]">{h.lang}</span>
+                        <span className="max-w-[70%] truncate text-right text-[var(--seo-text-light)]">{h.url}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              ) : null}
+
+              {/* Redirect chain (only when there are hops) */}
+              {redirectChain.length > 1 ? (
+                <Card className="lg:col-span-2">
+                  <h3 className="mb-3 text-sm font-semibold text-[var(--seo-subheading)]">
+                    Redirect Chain ({redirectChain.length - 1} hop{redirectChain.length > 2 ? "s" : ""})
+                  </h3>
+                  <div className="flex flex-col gap-1 text-sm">
+                    {redirectChain.map((u, i) => (
+                      <div key={`${u}-${i}`} className="flex items-center gap-2">
+                        <span className="text-xs text-[var(--seo-muted)]">{i + 1}.</span>
+                        <span className="truncate text-[var(--seo-text-light)]">{u}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              ) : null}
+            </div>
+          );
+        })()
       ) : null}
 
       {tab === "Recommendations" ? (
