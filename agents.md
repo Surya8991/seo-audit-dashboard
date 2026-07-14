@@ -105,10 +105,20 @@ prior standalone Streamlit SEO audit tool ported in on top.
 - `lib/crawl/orchestrator.ts`: `runCrawl(urls, opts, callbacks)`: bounded-
   concurrency (default 5, max 10) fan-out of single-URL `/api/audit` calls from
   the browser, with progress + incremental-result callbacks and abort support.
+  Not capped at any URL count itself; `lib/crawl/chunkedRunner.ts` is what
+  chunks a large list before handing each chunk to this.
+- `lib/crawl/chunkedRunner.ts`: `runChunked(allUrls, remainingUrls, options,
+  label, callbacks, resumeFrom?)`: splits a URL list into `CHUNK_SIZE=200`
+  batches, auto-advancing through `runCrawl` per chunk, and persists a
+  resumable checkpoint (remaining URLs + cumulative succeeded/failed) to
+  IndexedDB after every single result, not just at chunk boundaries. Powers
+  the "Interrupted audit found: Resume/Discard" banner on
+  `app/technical-audit/page.tsx`. See "Sitewide/bulk audit architecture" below.
 - `tests/`: pytest unit tests (pure-logic checklist tests + mocked-network
   tests for `check_https_enforcement`/X-Robots-Tag handling + sitemap
   extractor); see "Testing" below. `lib/crawl/*.test.ts`: Vitest unit tests
-  for the URL-list parser.
+  for the URL-list parser and the chunked runner (`vitest.config.ts` adds the
+  `@/*` path alias plain Vitest doesn't resolve on its own).
 
 ## How to run
 ```bash
@@ -131,11 +141,18 @@ Flask process + daemon thread + SSE + on-disk checkpointing; the
 neither model ports here as-is):
 1. One of three URL-resolution steps runs first, each bounded and fast enough
    to fit in a single invocation: `api/sitemap.py` (sitemap/sitemap-index
-   fetch), `api/crawl.py` (BFS link discovery, `run_full_audit=False`), or the
-   client-side CSV/paste parser (no network call at all).
-2. The browser (`lib/crawl/orchestrator.ts::runCrawl`) fans out bounded-
-   concurrency single-URL `POST /api/audit` calls, one invocation per URL, so
-   nothing risks the function timeout.
+   fetch, cap 2000), `api/crawl.py` (BFS link discovery, `run_full_audit=False`,
+   cap 200; lower than sitemap's because discovery itself does a real
+   per-page fetch), or the client-side CSV/paste parser (no network call,
+   cap 2000).
+2. `lib/crawl/chunkedRunner.ts::runChunked` splits the resolved list into
+   `CHUNK_SIZE=200` batches. Each batch goes through
+   `lib/crawl/orchestrator.ts::runCrawl`, which fans out bounded-concurrency
+   single-URL `POST /api/audit` calls, one invocation per URL, so nothing
+   risks the function timeout. Batches auto-advance with no user action
+   needed as long as the tab stays open; a checkpoint (remaining URLs +
+   cumulative succeeded/failed) persists to IndexedDB after every result, so
+   a closed/crashed tab can resume instead of restarting.
 3. Results batch into `AuditContext.addResults()` (one state update per batch,
    not per URL) and the Results page renders a sitewide rollup card
    (avg score, score distribution, top failing checks) when 2+ URLs are present.
@@ -167,6 +184,12 @@ sys.path shim. Live tests (`test_live_edstellar_sitemap`,
 Edstellar sitemap/pages and take 30+ seconds. Opt in with `RUN_LIVE_TESTS=1`.
 
 ## Agent notes / gotchas
+- `lib/crawl/chunkedRunner.ts::runChunked`'s optional `resumeFrom` param
+  (`{succeeded, failed, startedAt}`) exists because a prior version reset
+  succeeded/failed to 0 on every resume, silently showing only the resumed
+  session's count instead of the cumulative total for the whole job. If you
+  change this module, keep the checkpoint (not the in-memory counters) as
+  the source of truth for cumulative counts across a pause/resume boundary.
 - **Persistence is IndexedDB, not localStorage** (`lib/state/idbStore.ts`,
   used by `AuditContext.tsx`). It used to be localStorage, but every state
   change serializes the WHOLE `results` array as one blob, and a bulk audit

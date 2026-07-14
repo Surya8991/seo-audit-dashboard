@@ -1,6 +1,6 @@
 # PROJECT_LOG - SEO Technical Audit Dashboard
 
-> **Last updated:** 2026-07-14 · **Session:** 8 · **Version:** v0.7.0 (pre-release)
+> **Last updated:** 2026-07-14 · **Session:** 9 · **Version:** v0.8.0 (pre-release)
 > Master log, read in full before touching code. Mirrors the format of the
 > SEO Suite project's `PROJECT_LOG.md` (60-second resume, Do NOT, Current
 > State, Phases, Session History).
@@ -245,7 +245,47 @@ introduced was found and fixed before commit.
   from N× to 1× per domain, a major latency + politeness win on a 2,461-URL
   site. Checklist merges the shared site_health block per result for display.
 
-### PHASE 3 - Auditing sites with 200+ URLs  ⏳ PLANNED, NEEDS A DECISION
+### PHASE 3 - Auditing sites with 200+ URLs  ✅ COMPLETE (v0.8.0, option 2)
+
+User picked **option 2, chunked runs**. Implemented in
+`lib/crawl/chunkedRunner.ts`: splits a resolved URL list into fixed
+`CHUNK_SIZE=200` batches (still wraps the existing bounded-concurrency
+`lib/crawl/orchestrator.ts`, unchanged), auto-advancing from one chunk to
+the next with no user interaction required as long as the tab stays open,
+and persisting a lightweight resumable checkpoint (remaining URLs +
+cumulative succeeded/failed counts, not full audit results, those still
+flow through `AuditContext`/IndexedDB as before) after every single
+completed URL, not just at chunk boundaries. If the tab closes or crashes
+mid-run, reopening the Technical Audit page shows an "Interrupted audit
+found: X of Y done" banner with Resume/Discard.
+
+Raised `MAX_URL_CAP` in `modules/sitemap_extractor.py` from 200 to 2000
+(sitemap resolution is just an XML fetch/parse, cheap even at that size);
+kept `api/crawl.py`'s `MAX_MAX_PAGES` at 200 since BFS crawl discovery does
+a real per-page HTTP GET to extract links, a genuinely more expensive
+server-side operation than a sitemap fetch. The Technical Audit page's
+"URL limit" field now shows a mode-dependent max (2000 for sitemap/CSV, 200
+for crawl) and clamps down automatically (derived, not synced via a
+`useEffect`, to avoid a `react-hooks/set-state-in-effect` lint violation)
+if the user switches from sitemap to crawl mode with a higher limit set.
+
+Found and fixed a real bug during manual testing: the first draft reset
+`succeeded`/`failed` counts to 0 on every resume instead of carrying them
+forward, so a paused-then-resumed run's final tally only reflected the
+last session, not the cumulative total. Fixed by storing `succeeded`/
+`failed` in the checkpoint itself and threading them through
+`runChunked`'s optional `resumeFrom` parameter.
+
+Added `vitest.config.ts` (a `@/*` path alias matching `tsconfig.json`,
+needed because plain Vitest doesn't resolve Next.js's path aliases) and 6
+new tests in `lib/crawl/chunkedRunner.test.ts` (chunk-count arithmetic,
+checkpoint persistence/clearing, abort-leaves-a-resumable-checkpoint, and
+the succeeded/failed-carries-across-resume regression test). Verified
+manually end-to-end in-browser with a mocked, artificially slow
+(250ms/request) 60-URL run: paused mid-chunk at 54/60, reloaded (simulating
+a closed tab), saw the resume banner, resumed, and confirmed the final
+tally (48 ok + 12 failed = 60/60) was the correct cumulative total, not
+just the resumed session's count.
 
 **Why the 200-URL cap exists today:** `MAX_URL_CAP` in `modules/sitemap_extractor.py`
 and `api/crawl.py` (200) isn't a hard technical limit, it's a judgment call
@@ -363,3 +403,4 @@ explicitly unpaused.
 | 6 | 2026-07-14 | v0.5.0 | **Phase 1h: Help dialogs + check-selection UI.** User shared a screenshot of the reference tool's "Technical SEO" use-case explainer and asked for plain-English help dialogs plus a check-selection UI (default all on). Added `lib/checklistDefs.ts` (frontend mirror of the 35 check ids/labels/groups + one-sentence descriptions, guarded by a new test), `components/HelpDialog.tsx` (reusable popover), `components/ChecklistExplainer.tsx` (the "What Technical SEO checks" card with all 35 pills + "when to use", rendered below the audit form and collapsed by default), and `lib/useSelectedChecks.ts` + `components/CheckSelector.tsx` (a "Customize checks (N/35 selected)" panel, all on by default, persisted to localStorage). Help dialogs added to each of the 4 input-mode cards and each of the 3 checklist groups on the detail page; the detail page's Technical Audit tab now filters displayed checks by the user's selection (explicitly a display filter: the backend still computes all 35 checks every audit, since they're free once the page is fetched). 15 vitest + 44 pytest green; one real lint issue (unescaped apostrophes) found and fixed. Verified end-to-end in-browser via mocked state (explainer render, help popover open/close, check deselection + persistence, detail-page filtering with an accurate hidden-count message). |
 | 7 | 2026-07-14 | v0.6.0 | **UI polish, reporting gap fix, docs accuracy, and a full em-dash removal.** Moved `ChecklistExplainer` below the audit form (matching the user's screenshot) and collapsed it by default. Discovered PR #1 (`venkataramana-d`, still open) implements the FULL `venkataramana-work` roadmap (SQLite job queue, Playwright JS rendering, site scoring, a separate `/crawl` UI), overlapping/conflicting with the simpler discovery-only `api/crawl.py` already shipped; user decided to leave PR #1 untouched for now (not merged, not closed). Fixed 4 hardcoded `bg-white` inputs/selects (settings, performance, headings, detail pages) that broke dark mode, plus themed the dashboard's Recharts tooltips (`contentStyle`/`labelStyle` with CSS variables instead of Recharts' white default). Dispatched 5 parallel agents across 2 rounds for non-overlapping file sets: (1) UI content quality + em-dash removal across `app/`/`components/` except export, (2) reporting/export improvements, closing a real gap where the 35-check checklist was completely absent from CSV/Excel/PDF exports (now a checklist column/sheet/summary line in every format, `tests/test_report_generator.py` added), (3) `agents.md`/`PROJECT_LOG.md` accuracy audit (found and fixed a stale "Current State" section from Session 3/4), (4) em-dash sweep for the remaining Python modules/tests, (5) em-dash sweep for remaining `lib/*.ts` files + README. Total: 164 additional em-dashes removed across the whole codebase (zero remain anywhere in `app/`, `components/`, `lib/`, `modules/`, `api/`, `tests/`, or `*.md`). Final verification: 51 pytest passed (3 opt-in live skipped), 15 vitest passed, `tsc --noEmit` clean, lint at the exact pre-existing 27-error baseline (no new errors), secret scan clean across all 51 changed/new files. |
 | 8 | 2026-07-14 | v0.7.0 | **Critical fix: localStorage QuotaExceededError.** Every state change was writing the WHOLE results array as one JSON blob to localStorage (~5-10MB quota); a 200-URL bulk audit routinely exceeded it and crashed. Root-caused and fixed by migrating persistence to IndexedDB (`lib/state/idbStore.ts`, a minimal raw wrapper, no new dependency), with one-time migration of existing localStorage data and a defensive prune-to-500-most-recent fallback plus a user-visible warning banner if a save ever still fails. Verified with a synthetic 200-result, ~28MB payload saved and loaded successfully through the real `AuditContext` (would have crashed instantly under the old localStorage path). Extracted the sidebar's dark-mode logic into a shared `lib/useTheme.ts` hook (pub-sub so multiple mounted toggles stay in sync) and added a second toggle on the Settings page ("Appearance" card), per the user's choice to keep dark mode with an explicit Settings control rather than removing it. Changed the font from Inter to Arial (`--font-sans`, dropped the Google Fonts import). Researched and wrote a Phase 3 plan (`PROJECT_LOG.md`) for auditing 200+ URL sites: confirmed PR #1's SQLite job-queue does NOT reliably persist on Vercel's ephemeral containers by its own docstring (needs a real Postgres store, never built in that PR), and laid out 4 options (raise the cap, chunked runs, finish PR #1 with Postgres, GitHub Actions batch runner) with a recommendation (chunked runs short-term); no implementation yet, pending user direction. |
+| 9 | 2026-07-14 | v0.8.0 | **Phase 3 shipped: chunked runs.** User picked option 2 from the prior session's plan. Added `lib/crawl/chunkedRunner.ts` (`CHUNK_SIZE=200`, wraps the existing orchestrator unchanged, persists a resumable checkpoint of remaining URLs + cumulative succeeded/failed after every result), a resume/discard banner on the Technical Audit page, and a "Batch X of Y" progress indicator. Raised `modules/sitemap_extractor.py`'s `MAX_URL_CAP` 200 to 2000 (cheap XML fetch); kept `api/crawl.py`'s cap at 200 since BFS discovery is a real per-page fetch. Added `vitest.config.ts` (path alias, needed for the new lib to resolve `@/` imports under plain Vitest) and 6 new tests. Found and fixed a real bug via manual testing: succeeded/failed counts reset to 0 on resume instead of carrying forward; fixed by storing them in the checkpoint and threading through a `resumeFrom` param, verified with a live paused-then-resumed run (48 ok + 12 failed = 60/60 cumulative, correct). Also fixed a new `react-hooks/set-state-in-effect` violation introduced by an early draft (mode-dependent limit clamping) by deriving the clamped value instead of syncing it via `useEffect`; lint stayed at the 25-error baseline. 26 vitest + 51 pytest green, `tsc --noEmit` clean. |

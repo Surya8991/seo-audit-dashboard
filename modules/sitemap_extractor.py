@@ -33,7 +33,10 @@ MAX_SITEMAP_URLS = 50_000
 MAX_INDEX_DEPTH = 5          # how deep to recurse nested sitemap indexes
 MAX_SITEMAPS_FETCHED = 200   # backstop against a pathological index fan-out
 DEFAULT_URL_CAP = 50
-MAX_URL_CAP = 200
+# Sitemap resolution is just an XML fetch/parse, cheap even at this size, so
+# it can go much higher than the audit-side chunk size (lib/crawl/chunkedRunner.ts's
+# CHUNK_SIZE=200) — a large resolved list gets audited in chunks client-side.
+MAX_URL_CAP = 2000
 
 
 class SitemapError(Exception):

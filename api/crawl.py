@@ -8,8 +8,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from modules.auditor import validate_audit_url  # noqa: E402
 from modules.crawler import CrawlConfig, crawl_site  # noqa: E402
 
-# Discovery-only cap: mirrors the sitemap/CSV modes' 50 default / 200 max so
-# all three bulk input modes behave consistently in the Technical Audit UI.
+# Discovery-only cap. Kept lower than the sitemap/CSV modes' cap (2000):
+# unlike a sitemap fetch (one XML download), BFS crawl discovery does a real
+# HTTP GET per page just to extract links, so this bounds the discovery
+# request itself to the Vercel maxDuration window, not just the audit phase.
 DEFAULT_MAX_PAGES = 50
 MAX_MAX_PAGES = 200
 

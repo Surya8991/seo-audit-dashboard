@@ -1,17 +1,20 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAudit } from "@/lib/state/AuditContext";
 import { Card, PageHeader } from "@/components/ui";
 import type { AuditResult } from "@/lib/types";
 import { parseUrlList } from "@/lib/crawl/parseUrlList";
+import { DEFAULT_CONCURRENCY, MAX_CONCURRENCY } from "@/lib/crawl/orchestrator";
 import {
-  DEFAULT_CONCURRENCY,
-  MAX_CONCURRENCY,
-  runCrawl,
-  type CrawlProgress,
-} from "@/lib/crawl/orchestrator";
+  CHUNK_SIZE,
+  clearCheckpoint,
+  loadCheckpoint,
+  runChunked,
+  type ChunkedJobCheckpoint,
+  type ChunkedProgress,
+} from "@/lib/crawl/chunkedRunner";
 import { ChecklistExplainer } from "@/components/ChecklistExplainer";
 import { HelpDialog } from "@/components/HelpDialog";
 import { CheckSelector } from "@/components/CheckSelector";
@@ -19,7 +22,13 @@ import { CheckSelector } from "@/components/CheckSelector";
 type InputMode = "single" | "sitemap" | "list" | "crawl";
 
 const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 200;
+// Sitemap/CSV resolution is cheap (an XML fetch or client-side parsing), so
+// it can go far higher than a single chunk; large lists are audited in
+// CHUNK_SIZE-sized batches (lib/crawl/chunkedRunner.ts), resumable if
+// interrupted. Crawl mode's discovery step is a real per-page fetch, so it
+// stays capped lower, see CRAWL_MAX_LIMIT.
+const MAX_LIMIT = 2000;
+const CRAWL_MAX_LIMIT = 200;
 
 const MODES: { id: InputMode; label: string; icon: string; hint: string; help: string }[] = [
   {
@@ -74,16 +83,85 @@ export default function TechnicalAuditPage() {
 
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<"idle" | "resolving" | "crawling" | "done">("idle");
-  const [progress, setProgress] = useState<CrawlProgress | null>(null);
+  const [progress, setProgress] = useState<ChunkedProgress | null>(null);
   const [resolvedCount, setResolvedCount] = useState<{ found: number; capped: boolean } | null>(null);
+  const [resumable, setResumable] = useState<ChunkedJobCheckpoint | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const running = phase === "resolving" || phase === "crawling";
+  const effectiveMaxLimit = mode === "crawl" ? CRAWL_MAX_LIMIT : MAX_LIMIT;
+  // Crawl mode's cap is lower than sitemap/list; derive the clamped value
+  // instead of syncing `limit` state to it via an effect, so a higher limit
+  // set before switching modes doesn't need a render-triggering side effect.
+  const clampedLimit = Math.min(limit, effectiveMaxLimit);
+
+  // Offer to resume an interrupted chunked run left over from a prior session.
+  useEffect(() => {
+    loadCheckpoint().then((cp) => {
+      if (cp && cp.remaining.length > 0) setResumable(cp);
+    });
+  }, []);
 
   function handleFile(file: File) {
     const reader = new FileReader();
     reader.onload = () => setPastedList(String(reader.result || ""));
     reader.readAsText(file);
+  }
+
+  async function runFromCheckpoint(cp: ChunkedJobCheckpoint) {
+    setResumable(null);
+    setError(null);
+    setResolvedCount(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setPhase("crawling");
+    const completedSoFar = cp.urls.length - cp.remaining.length;
+    setProgress({
+      total: cp.urls.length, completed: completedSoFar, succeeded: cp.succeeded, failed: cp.failed,
+      inFlight: 0, lastUrl: "", currentChunk: Math.floor(completedSoFar / CHUNK_SIZE) + 1,
+      totalChunks: Math.max(1, Math.ceil(cp.urls.length / CHUNK_SIZE)),
+    });
+    await runChunkedAndPersist(cp.urls, cp.remaining, cp.options, cp.label, controller, {
+      succeeded: cp.succeeded, failed: cp.failed, startedAt: cp.startedAt,
+    });
+  }
+
+  function discardCheckpoint() {
+    clearCheckpoint();
+    setResumable(null);
+  }
+
+  async function runChunkedAndPersist(
+    allUrls: string[],
+    remainingUrls: string[],
+    opts: Parameters<typeof runChunked>[2],
+    label: string,
+    controller: AbortController,
+    resumeFrom: Parameters<typeof runChunked>[5] = null,
+  ) {
+    const batch: AuditResult[] = [];
+    await runChunked(
+      allUrls, remainingUrls, opts, label,
+      {
+        signal: controller.signal,
+        onProgress: (p) => setProgress(p),
+        onResult: (r) => {
+          batch.push(r);
+          // Flush to persisted state every 5 results so /results updates live-ish.
+          if (batch.length >= 5) {
+            addResults(batch.splice(0, batch.length));
+          }
+        },
+      },
+      resumeFrom,
+    );
+    if (batch.length) addResults(batch);
+    abortRef.current = null;
+    setPhase(controller.signal.aborted ? "idle" : "done");
+    if (controller.signal.aborted) {
+      // Checkpoint was left in place by runChunked; let the user resume next time.
+      loadCheckpoint().then((cp) => cp && setResumable(cp));
+    }
   }
 
   async function runSingle() {
@@ -119,8 +197,8 @@ export default function TechnicalAuditPage() {
         setError("No valid http(s) URLs found in the list.");
         return null;
       }
-      const capped = parsed.urls.slice(0, limit);
-      setResolvedCount({ found: parsed.urls.length, capped: parsed.urls.length > limit });
+      const capped = parsed.urls.slice(0, clampedLimit);
+      setResolvedCount({ found: parsed.urls.length, capped: parsed.urls.length > clampedLimit });
       return capped;
     }
 
@@ -135,7 +213,7 @@ export default function TechnicalAuditPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           seedUrl: crawlSeedUrl.trim(),
-          maxPages: limit,
+          maxPages: clampedLimit,
           maxDepth,
           includeSubdomains,
           robotsMode,
@@ -164,7 +242,7 @@ export default function TechnicalAuditPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         sitemapUrl: sitemapUrl.trim(),
-        limit,
+        limit: clampedLimit,
         includePattern: includePattern.trim() || undefined,
         excludePattern: excludePattern.trim() || undefined,
       }),
@@ -177,6 +255,12 @@ export default function TechnicalAuditPage() {
     }
     setResolvedCount({ found: data.total_found, capped: data.capped });
     return data.urls as string[];
+  }
+
+  function bulkLabel(): string {
+    if (mode === "sitemap") return `Sitemap: ${sitemapUrl.trim()}`;
+    if (mode === "crawl") return `Crawl: ${crawlSeedUrl.trim()}`;
+    return "CSV / Pasted URL list";
   }
 
   async function runBulk() {
@@ -193,32 +277,16 @@ export default function TechnicalAuditPage() {
     const controller = new AbortController();
     abortRef.current = controller;
     setPhase("crawling");
-    setProgress({ total: urls.length, completed: 0, succeeded: 0, failed: 0, inFlight: 0, lastUrl: "" });
+    const totalChunks = Math.max(1, Math.ceil(urls.length / CHUNK_SIZE));
+    setProgress({ total: urls.length, completed: 0, succeeded: 0, failed: 0, inFlight: 0, lastUrl: "", currentChunk: 1, totalChunks });
 
-    const batch: AuditResult[] = [];
-    await runCrawl(
-      urls,
-      { auditType, checkLinks, fetchPagespeed, concurrency },
-      {
-        signal: controller.signal,
-        onProgress: (p) => setProgress(p),
-        onResult: (r) => {
-          batch.push(r);
-          // Flush to persisted state every 5 results so /results updates live-ish.
-          if (batch.length >= 5) {
-            addResults(batch.splice(0, batch.length));
-          }
-        },
-      },
-    );
-    if (batch.length) addResults(batch);
-    abortRef.current = null;
-    setPhase("done");
+    await runChunkedAndPersist(urls, urls, { auditType, checkLinks, fetchPagespeed, concurrency }, bulkLabel(), controller);
   }
 
   function cancel() {
+    // Aborts the in-flight chunk; runChunked leaves its checkpoint in place
+    // (a resumable pause, not a full stop) for non-single-URL runs.
     abortRef.current?.abort();
-    setPhase("done");
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -236,6 +304,38 @@ export default function TechnicalAuditPage() {
         title="🚀 Technical Audit"
         subtitle="Run a technical SEO audit on a single URL, an entire sitemap, a crawl, or a list of URLs."
       />
+
+      {resumable && !running ? (
+        <Card className="mb-4 border-l-4 border-l-[var(--seo-warning)]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-[var(--seo-subheading)]">
+                Interrupted audit found
+              </div>
+              <div className="text-xs text-[var(--seo-text-light)]">
+                {resumable.label}: {resumable.urls.length - resumable.remaining.length} of{" "}
+                {resumable.urls.length} done
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => runFromCheckpoint(resumable)}
+                className="rounded-lg btn-gradient px-3 py-1.5 text-sm font-semibold text-white"
+              >
+                Resume
+              </button>
+              <button
+                type="button"
+                onClick={discardCheckpoint}
+                className="rounded-lg border border-[var(--seo-border-strong)] px-3 py-1.5 text-sm font-medium text-[var(--seo-text)] hover:bg-[var(--seo-card-hover)]"
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        </Card>
+      ) : null}
 
       {/* Mode selector */}
       <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4">
@@ -409,13 +509,15 @@ export default function TechnicalAuditPage() {
           {/* Bulk options */}
           {mode !== "single" ? (
             <div className="grid grid-cols-2 gap-3">
-              <Field label={`URL limit (max ${MAX_LIMIT})`}>
+              <Field label={`URL limit (max ${effectiveMaxLimit})`}>
                 <input
                   type="number"
                   min={1}
-                  max={MAX_LIMIT}
-                  value={limit}
-                  onChange={(e) => setLimit(Math.max(1, Math.min(MAX_LIMIT, Number(e.target.value) || DEFAULT_LIMIT)))}
+                  max={effectiveMaxLimit}
+                  value={clampedLimit}
+                  onChange={(e) =>
+                    setLimit(Math.max(1, Math.min(effectiveMaxLimit, Number(e.target.value) || DEFAULT_LIMIT)))
+                  }
                   className={inputClass}
                 />
               </Field>
@@ -477,7 +579,7 @@ export default function TechnicalAuditPage() {
               onClick={cancel}
               className="rounded-lg border border-[var(--seo-error-border)] bg-[var(--seo-error-bg)] px-4 py-2 text-sm font-semibold text-[var(--seo-error)]"
             >
-              Cancel
+              {mode === "single" ? "Cancel" : "Pause (resumable)"}
             </button>
           )}
         </form>
@@ -496,7 +598,13 @@ export default function TechnicalAuditPage() {
         <Card className="mt-4">
           <div className="mb-2 flex items-center justify-between text-sm">
             <span className="font-semibold text-[var(--seo-subheading)]">
-              {phase === "done" ? "Audit complete" : "Auditing…"}
+              {phase === "done"
+                ? "Audit complete"
+                : phase === "idle"
+                  ? "Paused"
+                  : progress.totalChunks > 1
+                    ? `Auditing… (batch ${progress.currentChunk} of ${progress.totalChunks})`
+                    : "Auditing…"}
             </span>
             <span className="text-[var(--seo-text-light)]">
               {progress.completed} / {progress.total}
@@ -516,12 +624,12 @@ export default function TechnicalAuditPage() {
             <span>⚠️ {progress.failed} failed</span>
             {resolvedCount ? (
               <span>
-                {resolvedCount.found} found{resolvedCount.capped ? ` (capped to ${limit})` : ""}
+                {resolvedCount.found} found{resolvedCount.capped ? ` (capped to ${clampedLimit})` : ""}
               </span>
             ) : null}
             {progress.lastUrl ? <span className="truncate">Last: {progress.lastUrl}</span> : null}
           </div>
-          {phase === "done" ? (
+          {phase === "done" || (phase === "idle" && progress.completed > 0) ? (
             <button
               type="button"
               onClick={() => router.push("/results")}
