@@ -20,10 +20,21 @@ HEADING_COLORS = {
 
 
 def _extract_headings(soup):
-    """Extract all h1-h6 tags in document order with metadata."""
+    """Extract all h1-h6 tags in document order with metadata.
+
+    Only headings inside the actual article content count: nav/header/footer/
+    aside are stripped first (matching modules/auditor.py::analyze_content's
+    scoping), so the tree doesn't pick up site-wide navigation or "related
+    posts"/"you might also like" widget headings that typically follow the
+    article's real conclusion.
+    """
+    content_soup = soup.__class__(str(soup), "lxml")
+    for tag in content_soup(["nav", "header", "footer", "aside"]):
+        tag.decompose()
+
     headings = []
     position = 0
-    for tag in soup.find_all(re.compile(r"^h[1-6]$")):
+    for tag in content_soup.find_all(re.compile(r"^h[1-6]$")):
         level = int(tag.name[1])
         text = tag.get_text(separator=" ", strip=True)
         id_attr = tag.get("id", None)

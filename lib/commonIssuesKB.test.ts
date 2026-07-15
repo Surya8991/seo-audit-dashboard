@@ -26,8 +26,15 @@ describe("explainCommonIssue", () => {
     expect(explainCommonIssue({ issue: "Sitemap Exceeds 50,000 URL Limit" })).not.toBeNull();
   });
 
-  it("returns null for an issue title with no KB entry", () => {
-    expect(explainCommonIssue({ issue: "Some Totally Unrelated Made-Up Issue" })).toBeNull();
+  it("falls back to a generic explanation for an issue title with no KB entry", () => {
+    const exp = explainCommonIssue({
+      issue: "Some Totally Unrelated Made-Up Issue",
+      category: "Made Up",
+      severity: "Warning",
+      recommendation: "Do the thing.",
+    });
+    expect(exp).not.toBeNull();
+    expect(exp.recommendedFix).toBe("Do the thing.");
   });
 
   it("every entry has all five explanation fields non-empty", () => {

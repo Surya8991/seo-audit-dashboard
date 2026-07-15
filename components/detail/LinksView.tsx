@@ -1,7 +1,7 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
-import { Card, IssueExplanationGrid, MetricCard, TabBar } from "@/components/ui";
+import { useMemo, useState, type CSSProperties } from "react";
+import { Card, IssueExplanationGrid, MetricCard, Modal, TabBar } from "@/components/ui";
 import { downloadCsv } from "@/lib/format";
 import {
   anchorTextDistribution,
@@ -33,6 +33,23 @@ const HEALTH_COLORS: Record<string, string> = {
   unknown: "#94A3B8",
 };
 const FOLLOW_COLORS = ["var(--seo-accent)", "#94A3B8"];
+
+// Deterministic per-link health color, mirrors linkHealthCounts()'s bucketing so
+// row tints and the pie chart always agree on what counts as ok/broken/redirect/unknown.
+function healthColorFor(l: LinkEntry): string {
+  if (l.is_broken) return HEALTH_COLORS.broken;
+  if (l.is_redirect) return HEALTH_COLORS.redirect;
+  if (l.health === "unknown" || l.health == null) return HEALTH_COLORS.unknown;
+  return HEALTH_COLORS.ok;
+}
+
+// Tints a MetricCard's background by overriding the --seo-card-bg custom property
+// on a wrapping div: the shared Card component (in components/ui.tsx, not touched
+// here) reads that variable, and CSS custom properties inherit through the DOM so
+// this works without needing a style prop on MetricCard itself.
+function cardTint(color: string): CSSProperties {
+  return { "--seo-card-bg": `${color}18` } as CSSProperties;
+}
 
 const PAGE_SIZE = 50;
 
@@ -70,9 +87,13 @@ export function LinksView({ result }: { result: AuditResult }) {
   const { orphan, lowLink } = useMemo(() => orphanAndLowLinkPages(results), [results]);
   const domainStats = useMemo(() => externalDomainBreakdown(external), [external]);
   const health = useMemo(() => linkHealthCounts(allLinks), [allLinks]);
-  const gaps = useMemo(() => securityGaps(allLinks), [allLinks]);
+  const gaps = useMemo(
+    () => securityGaps(allLinks) as (LinkEntry & { __kind: "internal" | "external" })[],
+    [allLinks],
+  );
   const summary = useMemo(() => buildExecutiveSummary(allLinks, orphan.length), [allLinks, orphan.length]);
   const homepageUrl = results[0]?.url;
+  const [activeGap, setActiveGap] = useState<(LinkEntry & { __kind: "internal" | "external" }) | null>(null);
 
   const brokenInternal = internal.filter((l) => l.is_broken).length;
   const brokenExternal = external.filter((l) => l.is_broken).length;
@@ -152,31 +173,49 @@ export function LinksView({ result }: { result: AuditResult }) {
           </Card>
 
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <MetricCard label="Internal Links" value={internal.length} onClick={() => goToTab("Links", { type: "internal" })} />
-            <MetricCard label="External Links" value={external.length} onClick={() => goToTab("Links", { type: "external" })} />
-            <MetricCard
-              label="Broken Internal"
-              value={brokenInternal}
-              onClick={() => goToTab("Links", { type: "internal", health: "broken" })}
-            />
-            <MetricCard
-              label="Broken External"
-              value={brokenExternal}
-              onClick={() => goToTab("Links", { type: "external", health: "broken" })}
-            />
-            <MetricCard
-              label="Nofollow External"
-              value={nofollowExternal}
-              onClick={() => goToTab("Links", { type: "external", follow: "nofollow" })}
-            />
-            <MetricCard label="Orphan Pages" value={orphan.length} onClick={() => goToTab("Opportunities")} />
-            <MetricCard label="Special Links" value={specialLinks.length} onClick={() => goToTab("Special Links")} />
-            <MetricCard label="Security Gaps" value={gaps.length} onClick={() => goToTab("Opportunities")} />
-            <MetricCard
-              label="Body Content Links"
-              value={allLinks.filter((l) => (l.location || "body") === "body").length}
-              onClick={() => goToTab("Links", { location: "body" })}
-            />
+            <div style={cardTint(HEALTH_COLORS.ok)}>
+              <MetricCard label="Internal Links" value={internal.length} onClick={() => goToTab("Links", { type: "internal" })} />
+            </div>
+            <div style={cardTint(HEALTH_COLORS.ok)}>
+              <MetricCard label="External Links" value={external.length} onClick={() => goToTab("Links", { type: "external" })} />
+            </div>
+            <div style={cardTint(HEALTH_COLORS.broken)}>
+              <MetricCard
+                label="Broken Internal"
+                value={brokenInternal}
+                onClick={() => goToTab("Links", { type: "internal", health: "broken" })}
+              />
+            </div>
+            <div style={cardTint(HEALTH_COLORS.broken)}>
+              <MetricCard
+                label="Broken External"
+                value={brokenExternal}
+                onClick={() => goToTab("Links", { type: "external", health: "broken" })}
+              />
+            </div>
+            <div style={cardTint(HEALTH_COLORS.redirect)}>
+              <MetricCard
+                label="Nofollow External"
+                value={nofollowExternal}
+                onClick={() => goToTab("Links", { type: "external", follow: "nofollow" })}
+              />
+            </div>
+            <div style={cardTint(HEALTH_COLORS.broken)}>
+              <MetricCard label="Orphan Pages" value={orphan.length} onClick={() => goToTab("Opportunities")} />
+            </div>
+            <div style={cardTint(HEALTH_COLORS.unknown)}>
+              <MetricCard label="Special Links" value={specialLinks.length} onClick={() => goToTab("Special Links")} />
+            </div>
+            <div style={cardTint(STATUS_COLOR_HEX.warning)}>
+              <MetricCard label="Security Gaps" value={gaps.length} onClick={() => goToTab("Opportunities")} />
+            </div>
+            <div style={cardTint(HEALTH_COLORS.ok)}>
+              <MetricCard
+                label="Body Content Links"
+                value={allLinks.filter((l) => (l.location || "body") === "body").length}
+                onClick={() => goToTab("Links", { location: "body" })}
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -373,8 +412,19 @@ export function LinksView({ result }: { result: AuditResult }) {
             </p>
             <ul className="text-sm text-[var(--seo-text)]">
               {gaps.slice(0, 25).map((l, i) => (
-                <li key={i} className="truncate border-b border-[var(--seo-border)] py-1 last:border-0">
+                <li
+                  key={i}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setActiveGap(l)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") setActiveGap(l);
+                  }}
+                  style={{ backgroundColor: `${STATUS_COLOR_HEX.warning}18`, borderLeft: `3px solid ${STATUS_COLOR_HEX.warning}` }}
+                  className="mb-1 cursor-pointer truncate rounded px-2 py-1.5 transition-shadow hover:shadow-sm"
+                >
                   {l.url} <span className="text-xs text-[var(--seo-muted)]">({l.anchor_text})</span>
+                  <span className="ml-2 text-xs font-medium text-[var(--seo-accent)]">View details & fix →</span>
                 </li>
               ))}
               {gaps.length === 0 ? <li className="text-[var(--seo-muted)]">None found.</li> : null}
@@ -382,6 +432,14 @@ export function LinksView({ result }: { result: AuditResult }) {
           </Card>
         </div>
       ) : null}
+
+      <Modal
+        open={!!activeGap}
+        onClose={() => setActiveGap(null)}
+        title={activeGap ? explainLink(activeGap, activeGap.__kind).issueName : undefined}
+      >
+        {activeGap ? <IssueDetail explanation={explainLink(activeGap, activeGap.__kind)} link={activeGap} /> : null}
+      </Modal>
     </div>
   );
 }
@@ -408,7 +466,9 @@ function LinkTable({
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "priority", dir: -1 });
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [expanded, setExpanded] = useState<number | null>(null);
+  const [activeLink, setActiveLink] = useState<
+    (LinkEntry & { __kind: "internal" | "external"; __priority: number }) | null
+  >(null);
 
   const statusCodes = useMemo(() => {
     const codes = new Set<number>();
@@ -699,12 +759,15 @@ function LinkTable({
           <tbody>
             {pageLinks.map((l, i) => {
               const secGap = l.opens_new_tab && (!l.has_noopener || !l.has_noreferrer);
-              const explanation = explainLink(l, l.__kind);
-              const isExpanded = expanded === i;
+              const rowColor = healthColorFor(l);
               return (
-                <Fragment key={i}>
-                <tr className="border-b border-[var(--table-row-border)]">
-                  <td className="px-3 py-3">
+                <tr
+                  key={i}
+                  onClick={() => setActiveLink(l)}
+                  className="cursor-pointer border-b border-[var(--table-row-border)] transition-shadow hover:shadow-sm"
+                  style={{ backgroundColor: `${rowColor}0d`, borderLeft: `3px solid ${rowColor}` }}
+                >
+                  <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" checked={selected.has(i)} onChange={() => toggleSelect(i)} />
                   </td>
                   <td className="max-w-xs truncate px-4 py-3 text-[var(--seo-subheading)]">{l.url}</td>
@@ -763,23 +826,15 @@ function LinkTable({
                       ) : null}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <button
-                      onClick={() => setExpanded(isExpanded ? null : i)}
+                      onClick={() => setActiveLink(l)}
                       className="text-xs font-medium text-[var(--seo-accent)] hover:underline"
                     >
-                      {isExpanded ? "Hide" : "Details"}
+                      Details
                     </button>
                   </td>
                 </tr>
-                {isExpanded ? (
-                  <tr className="border-b border-[var(--table-row-border)] bg-[var(--seo-card-alt)]">
-                    <td colSpan={20} className="px-4 py-4">
-                      <IssueDetail explanation={explanation} link={l} />
-                    </td>
-                  </tr>
-                ) : null}
-                </Fragment>
               );
             })}
             {pageLinks.length === 0 ? (
@@ -817,6 +872,14 @@ function LinkTable({
           </div>
         ) : null}
       </Card>
+
+      <Modal
+        open={!!activeLink}
+        onClose={() => setActiveLink(null)}
+        title={activeLink ? explainLink(activeLink, activeLink.__kind).issueName : undefined}
+      >
+        {activeLink ? <IssueDetail explanation={explainLink(activeLink, activeLink.__kind)} link={activeLink} /> : null}
+      </Modal>
     </div>
   );
 }

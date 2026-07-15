@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, Fragment } from "react";
-import { Card, IssueExplanationGrid, MetricCard, TabBar } from "@/components/ui";
+import { Card, IssueExplanationGrid, MetricCard, Modal, TabBar } from "@/components/ui";
 import { downloadCsv } from "@/lib/format";
 import type { AuditResult } from "@/lib/types";
 import {
@@ -26,6 +26,16 @@ const CWV_INFO: Record<string, { label: string; good: string; needsWork: string 
   tbt: { label: "Total Blocking Time", good: "< 200ms", needsWork: "200–600ms" },
   si: { label: "Speed Index", good: "< 3.4s", needsWork: "3.4–5.8s" },
   inp: { label: "Interaction to Next Paint", good: "< 200ms", needsWork: "200–500ms" },
+};
+
+const CWV_SUGGESTION: Record<string, string> = {
+  ttfb: "Speed up your server response: enable caching, put the origin behind a CDN, and cut backend processing or database query latency.",
+  fcp: "Eliminate render-blocking CSS/JS, inline critical styles, and minimize server response time so the browser can paint sooner.",
+  lcp: "Optimize your largest image/text block: compress and preload the LCP resource, and remove render-blocking CSS/JS ahead of it.",
+  cls: "Reserve space for images, ads, and embeds with explicit width/height, avoid injecting content above existing content, and preload web fonts to prevent layout jumps.",
+  tbt: "Break up long JavaScript tasks, defer or remove unused JS, and limit third-party scripts that block the main thread.",
+  si: "Speed up how quickly content becomes visible: reduce JS execution time, remove render-blocking resources, and streamline the critical rendering path.",
+  inp: "Reduce input-handler latency: split long tasks, trim large JS bundles that block the main thread, and keep event callbacks fast.",
 };
 
 interface MobileCheck {
@@ -61,6 +71,13 @@ const CATEGORY_ORDER = [
   "User Experience", "Conversion", "Performance", "Layout", "Accessibility",
 ];
 
+/** Tint a summary tile based on whether it's counting a real problem
+ * (count > 0 = bad) or a clean result (count === 0 = good). Reuses the
+ * same cwvColor status→color mapping the CWV tiles already use. */
+function issueCountColors(count: number) {
+  return cwvColor(count > 0 ? "fail" : "pass");
+}
+
 function groupChecksByCategory(checks: MobileCheck[]) {
   const groups = new Map<string, MobileCheck[]>();
   for (const c of checks) {
@@ -75,6 +92,9 @@ export function PerformanceView({ result }: { result: AuditResult }) {
   const [subTab, setSubTab] = useState<"Mobile" | "Image SEO">("Mobile");
   const [psiLoading, setPsiLoading] = useState(false);
   const [psiError, setPsiError] = useState<string | null>(null);
+  const [openCwvKey, setOpenCwvKey] = useState<string | null>(null);
+  const [openCheck, setOpenCheck] = useState<MobileCheck | null>(null);
+  const [openOpportunity, setOpenOpportunity] = useState<PsiOpportunity | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PSI JSON is dynamically shaped; typed accessors below narrow at use sites.
   const [livePsi, setLivePsi] = useState<Record<string, any> | null>(null);
 
@@ -178,9 +198,11 @@ export function PerformanceView({ result }: { result: AuditResult }) {
                 const colors = cwvColor(metric.status);
                 const info = CWV_INFO[key];
                 return (
-                  <div
+                  <button
                     key={key}
-                    className="rounded-lg p-3 text-center"
+                    type="button"
+                    onClick={() => setOpenCwvKey(key)}
+                    className="rounded-lg p-3 text-center transition-shadow hover:shadow-md"
                     style={{ backgroundColor: colors.bg }}
                     title={info ? `${info.label} (good: ${info.good}, needs improvement: ${info.needsWork})` : undefined}
                   >
@@ -188,11 +210,51 @@ export function PerformanceView({ result }: { result: AuditResult }) {
                     <div className="mt-1 text-lg font-bold" style={{ color: colors.text }}>
                       {metric.value}
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
           </Card>
+
+          <Modal
+            open={openCwvKey !== null}
+            onClose={() => setOpenCwvKey(null)}
+            title={openCwvKey ? CWV_INFO[openCwvKey]?.label || openCwvKey : undefined}
+          >
+            {openCwvKey ? (() => {
+              const metric = cwv[openCwvKey];
+              const info = CWV_INFO[openCwvKey];
+              const colors = cwvColor(metric?.status);
+              return (
+                <div className="flex flex-col gap-3 text-sm">
+                  <div className="rounded-lg p-3" style={{ backgroundColor: colors.bg }}>
+                    <div className="text-xs uppercase text-[var(--seo-muted)]">Current value</div>
+                    <div className="mt-1 text-xl font-bold" style={{ color: colors.text }}>
+                      {metric?.value ?? "N/A"}
+                    </div>
+                  </div>
+                  {info ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-xs font-semibold uppercase text-[var(--seo-muted)]">Good</div>
+                        <div className="text-[var(--seo-text)]">{info.good}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold uppercase text-[var(--seo-muted)]">Needs improvement</div>
+                        <div className="text-[var(--seo-text)]">{info.needsWork}</div>
+                      </div>
+                    </div>
+                  ) : null}
+                  <div>
+                    <div className="mb-1 text-xs font-semibold uppercase text-[var(--seo-muted)]">Suggested action</div>
+                    <p className="text-[var(--seo-text)]">
+                      {CWV_SUGGESTION[openCwvKey] || "Review this metric and address the underlying performance bottleneck."}
+                    </p>
+                  </div>
+                </div>
+              );
+            })() : null}
+          </Modal>
 
           {opportunities.length > 0 ? (
             <Card>
@@ -204,7 +266,12 @@ export function PerformanceView({ result }: { result: AuditResult }) {
               </p>
               <div className="flex flex-col gap-2">
                 {opportunities.map((op, i) => (
-                  <div key={i} className="border-b border-[var(--seo-border)] py-2 last:border-0">
+                  <button
+                    type="button"
+                    key={i}
+                    onClick={() => setOpenOpportunity(op)}
+                    className="w-full border-b border-[var(--seo-border)] py-2 text-left last:border-0 hover:bg-[var(--seo-card-hover)]"
+                  >
                     <div className="flex items-center justify-between text-sm">
                       <span className="font-medium text-[var(--seo-subheading)]">{op.title}</span>
                       {op.displayValue ? (
@@ -214,11 +281,32 @@ export function PerformanceView({ result }: { result: AuditResult }) {
                     {op.description ? (
                       <p className="mt-0.5 text-xs text-[var(--seo-text-light)]">{op.description}</p>
                     ) : null}
-                  </div>
+                  </button>
                 ))}
               </div>
             </Card>
           ) : null}
+
+          <Modal
+            open={openOpportunity !== null}
+            onClose={() => setOpenOpportunity(null)}
+            title={openOpportunity?.title}
+          >
+            {openOpportunity ? (
+              <div className="flex flex-col gap-3 text-sm">
+                {openOpportunity.displayValue ? (
+                  <div className="rounded-lg bg-[var(--seo-warning-bg)] p-3 text-center text-lg font-bold text-[var(--seo-warning)]">
+                    {openOpportunity.displayValue}
+                  </div>
+                ) : null}
+                {openOpportunity.description ? (
+                  <p className="text-[var(--seo-text)]">{openOpportunity.description}</p>
+                ) : (
+                  <p className="text-[var(--seo-muted)]">No further description available.</p>
+                )}
+              </div>
+            ) : null}
+          </Modal>
 
           <Card>
             <h3 className="mb-2 text-sm font-semibold text-[var(--seo-subheading)]">
@@ -231,9 +319,12 @@ export function PerformanceView({ result }: { result: AuditResult }) {
                     {category}
                   </h4>
                   {checks.map((c, i) => (
-                    <div
+                    <button
+                      type="button"
                       key={i}
-                      className="flex items-center justify-between border-b border-[var(--seo-border)] py-1.5 text-sm last:border-0"
+                      onClick={() => setOpenCheck(c)}
+                      className="flex w-full items-center justify-between rounded-md border-b border-[var(--seo-border)] px-2 py-1.5 text-left text-sm last:border-0 hover:shadow-sm"
+                      style={{ backgroundColor: cwvColor(c.status).bg }}
                     >
                       <span className="text-[var(--seo-text)]">{c.name}</span>
                       <span
@@ -249,12 +340,57 @@ export function PerformanceView({ result }: { result: AuditResult }) {
                       >
                         {c.status} {c.value ? `: ${c.value}` : ""}
                       </span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               ))}
             </div>
           </Card>
+
+          <Modal
+            open={openCheck !== null}
+            onClose={() => setOpenCheck(null)}
+            title={openCheck?.name}
+          >
+            {openCheck ? (
+              <div className="flex flex-col gap-3 text-sm">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-xs font-semibold uppercase text-[var(--seo-muted)]">Category</div>
+                    <div className="text-[var(--seo-text)]">{openCheck.category}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold uppercase text-[var(--seo-muted)]">Status</div>
+                    <div
+                      className="font-medium capitalize"
+                      style={{
+                        color:
+                          openCheck.status === "pass"
+                            ? "var(--seo-success)"
+                            : openCheck.status === "fail"
+                            ? "var(--seo-error)"
+                            : "var(--seo-muted)",
+                      }}
+                    >
+                      {openCheck.status}
+                    </div>
+                  </div>
+                </div>
+                {openCheck.value ? (
+                  <div>
+                    <div className="text-xs font-semibold uppercase text-[var(--seo-muted)]">Value</div>
+                    <div className="text-[var(--seo-text)]">{openCheck.value}</div>
+                  </div>
+                ) : null}
+                <div>
+                  <div className="mb-1 text-xs font-semibold uppercase text-[var(--seo-muted)]">Details</div>
+                  <p className="text-[var(--seo-text)]">
+                    {openCheck.detail || `Review this check in context of ${openCheck.category}.`}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+          </Modal>
         </div>
       ) : (
         <ImageSeoTab results={[r]} showSource={false} />
@@ -375,12 +511,31 @@ function ImageSeoTab({ results, showSource }: { results: AuditResult[]; showSour
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <MetricCard label="Total Images" value={images.length} />
-        <MetricCard label="Missing Alt Text" value={missingAlt} onClick={() => setAltFilter("missing")} />
-        <MetricCard label="Large Images (>200KB)" value={largeImages} onClick={() => setIssueOnly(true)} />
-        <MetricCard label="Missing Lazy Load" value={noLazy} />
-        <MetricCard label="Duplicate Alt Text" value={duplicateAlt} />
-        <MetricCard label="Format Upgrade Candidates" value={formatOpportunities.length} />
-        <MetricCard label="Broken Images" value={brokenImages} onClick={() => setBrokenOnly(true)} />
+        <TintedMetricCard
+          label="Missing Alt Text"
+          value={missingAlt}
+          tint={issueCountColors(missingAlt)}
+          onClick={() => setAltFilter("missing")}
+        />
+        <TintedMetricCard
+          label="Large Images (>200KB)"
+          value={largeImages}
+          tint={issueCountColors(largeImages)}
+          onClick={() => setIssueOnly(true)}
+        />
+        <TintedMetricCard label="Missing Lazy Load" value={noLazy} tint={issueCountColors(noLazy)} />
+        <TintedMetricCard label="Duplicate Alt Text" value={duplicateAlt} tint={issueCountColors(duplicateAlt)} />
+        <TintedMetricCard
+          label="Format Upgrade Candidates"
+          value={formatOpportunities.length}
+          tint={issueCountColors(formatOpportunities.length)}
+        />
+        <TintedMetricCard
+          label="Broken Images"
+          value={brokenImages}
+          tint={issueCountColors(brokenImages)}
+          onClick={() => setBrokenOnly(true)}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -504,8 +659,21 @@ function ImageSeoTab({ results, showSource }: { results: AuditResult[]; showSour
                         <img src={img.url} alt="" className="h-10 w-10 rounded object-cover" loading="lazy" onError={(e) => { (e.target as HTMLImageElement).style.visibility = "hidden"; }} />
                       ) : null}
                     </td>
-                    <td className="max-w-[10rem] truncate px-4 py-3 text-[var(--seo-subheading)]" title={img.url}>
-                      {img.name || "(unnamed)"}
+                    <td className="max-w-[10rem] truncate px-4 py-3 text-[var(--seo-subheading)]">
+                      {img.url ? (
+                        <a
+                          href={img.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={img.url}
+                          onClick={(e) => e.stopPropagation()}
+                          className="hover:underline"
+                        >
+                          {img.name || "(unnamed)"}
+                        </a>
+                      ) : (
+                        <span title={img.url}>{img.name || "(unnamed)"}</span>
+                      )}
                       {img.is_lcp_candidate ? (
                         <span className="ml-1 rounded-full bg-[var(--seo-accent-light)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--seo-accent)]">LCP</span>
                       ) : null}
@@ -564,15 +732,6 @@ function ImageSeoTab({ results, showSource }: { results: AuditResult[]; showSour
                       )}
                     </td>
                   </tr>
-                  {isExpanded ? (
-                    <tr className="border-b border-[var(--table-row-border)] bg-[var(--seo-card-alt)]">
-                      <td colSpan={10} className="px-4 py-4">
-                        <div className="flex flex-col gap-4">
-                          {explanations.map((exp, idx) => exp && <ImageIssueDetail key={idx} explanation={exp} />)}
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
                 </Fragment>
               );
             })}
@@ -586,6 +745,56 @@ function ImageSeoTab({ results, showSource }: { results: AuditResult[]; showSour
           </tbody>
         </table>
       </Card>
+
+      <Modal
+        open={expanded !== null}
+        onClose={() => setExpanded(null)}
+        title={expanded !== null ? sorted[expanded]?.name || "(unnamed)" : undefined}
+      >
+        {expanded !== null && sorted[expanded] ? (
+          <div className="flex flex-col gap-4">
+            {sorted[expanded].issues
+              .map((iss) => explainImageIssue(iss, sorted[expanded]))
+              .filter(Boolean)
+              .map((exp, idx) => exp && <ImageIssueDetail key={idx} explanation={exp} />)}
+          </div>
+        ) : null}
+      </Modal>
+    </div>
+  );
+}
+
+/** Same layout as the shared MetricCard, but with a status-tinted background.
+ * MetricCard itself has no color prop, so this reimplements its markup
+ * locally (using the same global `.card` class) rather than touching
+ * components/ui.tsx, which is off-limits for this change. */
+function TintedMetricCard({
+  label,
+  value,
+  tint,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  tint: { text: string; bg: string };
+  onClick?: () => void;
+}) {
+  return (
+    <div
+      className={`card p-5 ${onClick ? "cursor-pointer transition-shadow hover:shadow-md" : ""}`}
+      style={{ backgroundColor: tint.bg }}
+    >
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={!onClick}
+        className="w-full text-left disabled:cursor-default"
+      >
+        <div className="text-xs font-medium uppercase tracking-wide text-[var(--seo-muted)]">{label}</div>
+        <div className="mt-1 text-2xl font-bold" style={{ color: tint.text }}>
+          {value}
+        </div>
+      </button>
     </div>
   );
 }
