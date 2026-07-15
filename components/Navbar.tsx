@@ -68,7 +68,7 @@ function SessionPill() {
         : "No AI key";
 
   return (
-    <div className="hidden items-center gap-2 rounded-full border border-[var(--seo-border)] bg-[var(--seo-card-bg-alt)] px-3 py-1 text-xs text-[var(--seo-text-light)] lg:flex">
+    <div className="hidden shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-[var(--seo-border)] bg-[var(--seo-card-bg-alt)] px-3 py-1 text-xs text-[var(--seo-text-light)] lg:flex">
       <span>{results.length} URL{results.length === 1 ? "" : "s"}</span>
       <span className="text-[var(--seo-border-strong)]">·</span>
       <span>{keyLabel}</span>

@@ -17,6 +17,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Legend,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -120,16 +121,22 @@ export default function DashboardPage() {
                   data={distData}
                   dataKey="value"
                   nameKey="name"
+                  cx="50%"
+                  cy="50%"
                   outerRadius={80}
                   fill="#8884d8"
                   isAnimationActive={false}
-                  label
                 >
                   {distData.map((_, i) => (
                     <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} />
+                <Legend
+                  verticalAlign="bottom"
+                  height={36}
+                  wrapperStyle={{ fontSize: 12, color: "var(--seo-text-light)" }}
+                />
               </PieChart>
             </ResponsiveContainer>
           ) : null}
