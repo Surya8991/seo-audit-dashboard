@@ -852,8 +852,11 @@ def _summarize_internal(links):
     if miss_no > 0:
         issues.append({
             "issue": f"Internal Links Opening in New Tab Without rel='noopener' ({miss_no})", "category": "Internal Links",
-            "severity": "Medium", "impact_score": 4, "effort": "Low",
-            "recommendation": "Add rel='noopener noreferrer' to all internal links that open in new tabs.",
+            # Low, not Medium: this is a security/perf best-practice, NOT an SEO
+            # ranking factor, and modern browsers imply `noopener` for
+            # target="_blank" automatically (since ~2021), so it rarely matters.
+            "severity": "Low", "impact_score": 2, "effort": "Low",
+            "recommendation": "Add rel='noopener noreferrer' to links that open in new tabs. Note: modern browsers already imply noopener for target=\"_blank\", so this is a minor hardening, not an SEO issue.",
         })
     if weak_a > 0:
         issues.append({
@@ -907,8 +910,10 @@ def _summarize_external(links):
     if miss_noop > 0:
         issues.append({
             "issue": f"External Links Missing rel='noopener' ({miss_noop})", "category": "External Links",
-            "severity": "Medium", "impact_score": 5, "effort": "Low",
-            "recommendation": "Add rel='noopener noreferrer' to all external links that open in new tabs (security best practice).",
+            # Low, not Medium: security/perf best-practice, not an SEO ranking
+            # factor; modern browsers imply noopener for target="_blank" since ~2021.
+            "severity": "Low", "impact_score": 2, "effort": "Low",
+            "recommendation": "Add rel='noopener noreferrer' to external links that open in new tabs. Note: modern browsers already imply noopener for target=\"_blank\", so this is minor hardening, not an SEO issue.",
         })
     if dofollow > 50:
         issues.append({

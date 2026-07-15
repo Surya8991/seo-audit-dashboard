@@ -381,6 +381,16 @@ def check_readability(text: str) -> dict:
     fk_grade = round(textstat.textstat.flesch_kincaid_grade(text), 1)
     ease = round(textstat.textstat.flesch_reading_ease(text), 1)
 
+    # A Flesch-Kincaid grade above ~19 is not real reading difficulty — the
+    # scale tops out around 18 (post-graduate). A higher number means the input
+    # is NOT prose: nav labels, button text, and marketing fragments without
+    # sentence punctuation inflate the average-sentence-length term. Treat that
+    # as a measurement artifact and don't flag it (this removed the implausible
+    # "Grade 22" false positive on nav-heavy/landing pages). Genuinely hard prose
+    # still falls in the plausible 14-19 band and is flagged.
+    if fk_grade > 19:
+        return {"available": True, "fk_grade": fk_grade, "reading_ease": ease, "issues": []}
+
     if fk_grade > 14:
         issues.append(_issue(f"Difficult Readability (Grade {fk_grade})", "Content", "Warning",
             "Simplify sentence structure and vocabulary to lower the reading grade level.",

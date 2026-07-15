@@ -10,6 +10,24 @@ from bs4 import BeautifulSoup
 from modules.advanced_checks import analyze_advanced, analyze_technical_seo
 
 
+def _ttfb_issues(response_time_s):
+    soup = BeautifulSoup("<html><head></head><body><p>hi</p></body></html>", "lxml")
+    r = analyze_technical_seo(soup, "https://x.com/", 1000, response_time_s)
+    return [i for i in r.get("issues", []) if "server response" in i["issue"].lower()]
+
+
+def test_ttfb_thresholds_widened_for_reproducibility():
+    # BUG#3: a single noisy response_time used to flip a ~500-700ms page between
+    # "Poor TTFB" (High, -25 perf) and lower bands, changing the score run-to-run.
+    # Bands are widened: ~300ms -> nothing, ~700ms -> Warning (not High),
+    # clearly-slow >1200ms -> High.
+    assert _ttfb_issues(0.3) == []
+    warn = _ttfb_issues(0.7)
+    assert warn and warn[0]["severity"] == "Warning"
+    high = _ttfb_issues(1.5)
+    assert high and high[0]["severity"] == "High"
+
+
 def _issues(result):
     return [i["issue"] for i in result.get("issues", [])]
 

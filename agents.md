@@ -486,6 +486,18 @@ Edstellar sitemap/pages and take 30+ seconds. Opt in with `RUN_LIVE_TESTS=1`.
   issue `category` is mapped in `scoring.py`/`aggregate.ts` `THEMES` (an
   unmapped category silently lands in the "Other" bucket, which is how the
   "Image SEO" issues were getting lost).
+- **Every source in the `all_issues` list must also be SCORED** in
+  `scoring.py::calculate_seo_score`'s breakdown. `mobile_audit` was in
+  `all_issues` (shown/counted/fed to the AI) but not in any scoring bucket, so
+  mobile issues (missing viewport, intrusive interstitial) moved the score by 0
+  (Session 27 fix — folded into the `advanced` bucket). When adding a check
+  module, add it to BOTH lists.
+- **`auditor._normalize_issues` backfills `impact_score` + `effort`** on every
+  `all_issues` entry (severity→default table) — some modules (e.g.
+  `blog_auditor`) build issue dicts inline without them, which made a
+  High-severity issue sort below a Low (missing impact_score treated as 0) and
+  undercounted the fix-effort chips. Don't rely on a module always setting these;
+  the normalizer is the safety net, but prefer `_issue()` when writing new checks.
 - `lib/crawl/chunkedRunner.ts::runChunked`'s optional `resumeFrom` param
   (`{succeeded, failed, startedAt}`) exists because a prior version reset
   succeeded/failed to 0 on every resume, silently showing only the resumed

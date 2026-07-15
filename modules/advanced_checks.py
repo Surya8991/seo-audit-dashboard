@@ -335,29 +335,37 @@ def analyze_technical_seo(soup, url: str, page_size_bytes: int, response_time: f
     )
 
     # ── Core Web Vitals estimates ─────────────────────────────────────────
+    # `response_time` is a SINGLE live measurement (requests' time-to-headers)
+    # and carries network jitter — two audits of the same unchanged page can
+    # differ by hundreds of ms, which used to flip the TTFB severity across a
+    # 500ms boundary and change the SEO SCORE run-to-run (a reproducibility bug).
+    # The bands are widened so ordinary jitter no longer flips the severity, the
+    # wording says "estimated", and the High band starts at a clearly-slow
+    # >1200ms. For an authoritative figure use the PageSpeed Insights TTFB
+    # (fetched separately when PSI is enabled).
     ttfb_ms = round((response_time or 0.0) * 1000)
     if ttfb_ms < 200:
         cwv_ttfb_estimate = "Good (<200ms)"
-    elif ttfb_ms < 500:
-        cwv_ttfb_estimate = "Needs Improvement (200-500ms)"
+    elif ttfb_ms < 600:
+        cwv_ttfb_estimate = "Needs Improvement (200-600ms)"
     else:
-        cwv_ttfb_estimate = "Poor (>500ms)"
+        cwv_ttfb_estimate = "Poor (>600ms)"
 
-    if ttfb_ms > 500:
+    if ttfb_ms > 1200:
         issues.append({
-            "issue": f"Poor TTFB: Server Response Time {ttfb_ms}ms",
+            "issue": f"Slow Server Response (estimated ~{ttfb_ms}ms)",
             "category": "Performance",
             "severity": "High",
-            "recommendation": "Reduce Time to First Byte below 200ms. Investigate server-side rendering time, database queries, and implement server-side caching or a CDN.",
+            "recommendation": "Server response time is well above the 200ms target. Investigate server-side rendering time and database queries, and add server-side caching or a CDN. Confirm with a PageSpeed Insights run (single-request timing is approximate).",
             "impact_score": 8,
             "effort": "High",
         })
-    elif ttfb_ms > 200:
+    elif ttfb_ms > 600:
         issues.append({
-            "issue": f"TTFB Needs Improvement ({ttfb_ms}ms)",
+            "issue": f"Server Response Could Be Faster (estimated ~{ttfb_ms}ms)",
             "category": "Performance",
             "severity": "Warning",
-            "recommendation": "Aim for TTFB under 200ms. Consider server-side caching, CDN, or optimizing backend processing.",
+            "recommendation": "Aim for a server response under 200ms. Consider server-side caching, a CDN, or optimizing backend processing. Single-request timing is approximate; confirm with PageSpeed Insights.",
             "impact_score": 5,
             "effort": "Medium",
         })

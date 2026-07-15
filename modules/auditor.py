@@ -148,6 +148,30 @@ def _issue(issue, category, severity, recommendation, impact_score=5, effort="Me
     }
 
 
+# Defaults used to backfill issues that some modules build inline WITHOUT going
+# through `_issue()` (e.g. blog_auditor), so they arrive missing impact_score /
+# effort. Without this, worstIssue()/get_top_issues_by_impact rank a
+# High-severity issue with a missing impact_score below a Low with impact 2, and
+# the fix-effort chips undercount. Keyed by severity.
+_DEFAULT_IMPACT_BY_SEVERITY = {"Critical": 9, "High": 7, "Medium": 5, "Warning": 4, "Low": 2}
+_DEFAULT_EFFORT_BY_SEVERITY = {
+    "Critical": "High", "High": "High", "Medium": "Medium", "Warning": "Medium", "Low": "Low",
+}
+
+
+def _normalize_issues(issues):
+    """Guarantee every issue dict has a numeric `impact_score` and an `effort`,
+    derived from severity when absent/None, so no downstream sort or fix-effort
+    chip hits a missing value. Mutates + returns the list."""
+    for i in issues:
+        sev = i.get("severity", "Low")
+        if not isinstance(i.get("impact_score"), (int, float)):
+            i["impact_score"] = _DEFAULT_IMPACT_BY_SEVERITY.get(sev, 3)
+        if not i.get("effort"):
+            i["effort"] = _DEFAULT_EFFORT_BY_SEVERITY.get(sev, "Medium")
+    return issues
+
+
 def fetch_page(url):
     """Fetch URL with proper encoding detection and error handling.
 
@@ -750,7 +774,7 @@ def audit_url(url, audit_type="auto", check_links=True, validate_links=False,
                 "advanced", "redirect_analysis", "mobile_audit", "site_health",
                 "internal_links", "external_links", "course_audit", "blog_audit"]:
         all_issues.extend(result.get(key, {}).get("issues", []))
-    result["all_issues"] = all_issues
+    result["all_issues"] = _normalize_issues(all_issues)
 
     from modules.scoring import calculate_seo_score
     sr = calculate_seo_score(result)

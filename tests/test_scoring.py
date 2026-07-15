@@ -42,6 +42,35 @@ def test_heading_and_security_map_to_expected_themes():
     assert any("Responsiveness problem" == i["issue"] for i in grouped.get("Technical", []))
 
 
+def test_mobile_audit_issues_affect_the_score():
+    # BUG#1: mobile_audit issues are in all_issues but used to contribute 0 to
+    # the score. A page with a Critical mobile issue must score below a clean one.
+    clean = calculate_seo_score({"status_code": 200})["score"]
+    mobile_broken = calculate_seo_score({
+        "status_code": 200,
+        "mobile_audit": {"issues": [{
+            "issue": "Missing viewport meta tag", "category": "Mobile Basics",
+            "severity": "Critical", "recommendation": "Add a viewport meta tag.",
+            "impact_score": 9, "effort": "Low",
+        }]},
+    })["score"]
+    assert mobile_broken < clean
+
+
+def test_normalize_issues_backfills_impact_and_effort():
+    # BUG#2: some modules (blog_auditor) build issue dicts without impact_score /
+    # effort. The all_issues normalizer must backfill both from severity.
+    from modules.auditor import _normalize_issues
+    out = _normalize_issues([
+        {"issue": "Missing Author Information", "category": "Blog Content",
+         "severity": "High", "recommendation": "Add an author byline."},
+        {"issue": "x", "category": "y", "severity": "Low", "recommendation": "z", "impact_score": None},
+    ])
+    assert isinstance(out[0]["impact_score"], (int, float)) and out[0]["impact_score"] > 0
+    assert out[0]["effort"]
+    assert isinstance(out[1]["impact_score"], (int, float))  # None was backfilled
+
+
 def test_perfect_result_scores_100():
     result = {"status_code": 200}
     out = calculate_seo_score(result)

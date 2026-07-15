@@ -17,7 +17,10 @@ import requests
 logger = logging.getLogger(__name__)
 
 _GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
-_DEFAULT_MODEL = "llama-3.1-8b-instant"
+# llama-3.3-70b-versatile (still free on Groq) over the weaker 8b-instant: the
+# audit summary + fix drafts are reasoning tasks where the larger model is more
+# reliable and specific, at negligible extra latency (~1s vs 0.7s, single call).
+_DEFAULT_MODEL = "llama-3.3-70b-versatile"
 _MAX_AUDIT_CHARS = 8000
 
 # NOTE: the multi-turn chatbot (`chat_with_assistant`, `_trim_chat_messages`,
@@ -173,7 +176,9 @@ def explain_audit(all_issues: list[dict], seo_score: float, api_key: str,
     scope_hint = (
         "This is a sitewide audit; the counts show how many pages each issue affects. "
         if is_sitewide else
-        "This is a single-page audit. "
+        "This is a SINGLE-PAGE audit — every issue below is on THIS ONE page. Do NOT "
+        "claim or imply the issues affect 'multiple pages', 'several pages', or "
+        "'across the site'; refer only to this page. "
     )
     user_msg = (
         f"SEO health score: {seo_score}/100. {scope_hint}"
