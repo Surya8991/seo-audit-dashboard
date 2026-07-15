@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Card } from "@/components/ui";
-import { HelpDialog } from "@/components/HelpDialog";
+import { Card, HelpSection } from "@/components/ui";
 import { CHECK_IDS, GROUP_HELP, GROUP_LABELS, checksByGroup } from "@/lib/checklistDefs";
 import { useSelectedChecks } from "@/lib/useSelectedChecks";
 
@@ -61,9 +60,9 @@ export function CheckSelector() {
                   <span className="text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">
                     {GROUP_LABELS[group]} ({groupSelectedCount}/{items.length})
                   </span>
-                  <HelpDialog title={GROUP_LABELS[group]}>{GROUP_HELP[group]}</HelpDialog>
                 </div>
-                <div className="grid grid-cols-1 gap-1 pl-1 sm:grid-cols-2">
+                <HelpSection>{GROUP_HELP[group]}</HelpSection>
+                <div className="mt-1.5 grid grid-cols-1 gap-1 pl-1 sm:grid-cols-2">
                   {items.map((c) => (
                     <label
                       key={c.id}

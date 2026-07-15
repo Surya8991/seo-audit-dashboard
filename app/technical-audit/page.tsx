@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAudit } from "@/lib/state/AuditContext";
-import { Card, PageHeader } from "@/components/ui";
+import { Card, HelpSection, PageHeader } from "@/components/ui";
 import type { AuditResult } from "@/lib/types";
 import { parseUrlList } from "@/lib/crawl/parseUrlList";
 import { DEFAULT_CONCURRENCY, MAX_CONCURRENCY } from "@/lib/crawl/orchestrator";
@@ -17,7 +17,6 @@ import {
 } from "@/lib/crawl/chunkedRunner";
 import { fetchDomainHealth } from "@/lib/crawl/siteHealthCache";
 import { ChecklistExplainer } from "@/components/ChecklistExplainer";
-import { HelpDialog } from "@/components/HelpDialog";
 import { CheckSelector } from "@/components/CheckSelector";
 
 type InputMode = "single" | "sitemap" | "list" | "crawl";
@@ -26,10 +25,13 @@ const DEFAULT_LIMIT = 50;
 // Sitemap/CSV resolution is cheap (an XML fetch or client-side parsing), so
 // it can go far higher than a single chunk; large lists are audited in
 // CHUNK_SIZE-sized batches (lib/crawl/chunkedRunner.ts), resumable if
-// interrupted. Crawl mode's discovery step is a real per-page fetch, so it
-// stays capped lower, see CRAWL_MAX_LIMIT.
+// interrupted. Crawl mode's discovery step is a real per-page fetch done
+// synchronously in one api/crawl.py invocation (not chunked like per-URL
+// audits are) — raised to match MAX_LIMIT per explicit request, but a crawl
+// anywhere near 4000 pages risks exceeding Vercel's per-invocation time
+// limit; this is a known risk, not a verified-safe value.
 const MAX_LIMIT = 4000;
-const CRAWL_MAX_LIMIT = 200;
+const CRAWL_MAX_LIMIT = 4000;
 
 const MODES: { id: InputMode; label: string; icon: string; hint: string; help: string }[] = [
   {
@@ -354,7 +356,7 @@ export default function TechnicalAuditPage() {
       ) : null}
 
       {/* Mode selector */}
-      <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+      <div className="mb-2 grid grid-cols-2 gap-2 md:grid-cols-4">
         {MODES.map((m) => (
           <div
             key={m.id}
@@ -373,9 +375,6 @@ export default function TechnicalAuditPage() {
                 : "border-[var(--seo-border)] hover:bg-[var(--seo-card-hover)]"
             }`}
           >
-            <div className="absolute right-2 top-2" onClick={(e) => e.stopPropagation()}>
-              <HelpDialog title={m.label}>{m.help}</HelpDialog>
-            </div>
             <span className="text-lg">{m.icon}</span>
             <span className="mt-1 text-sm font-semibold text-[var(--seo-subheading)]">{m.label}</span>
             <span className="pr-4 text-xs text-[var(--seo-muted)]">{m.hint}</span>
@@ -383,7 +382,13 @@ export default function TechnicalAuditPage() {
         ))}
       </div>
 
-      <CheckSelector />
+      <HelpSection title={MODES.find((m) => m.id === mode)?.label}>
+        {MODES.find((m) => m.id === mode)?.help}
+      </HelpSection>
+
+      <div className="mt-4">
+        <CheckSelector />
+      </div>
 
       <Card>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
