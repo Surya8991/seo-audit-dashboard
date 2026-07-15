@@ -19,9 +19,12 @@ class handler(BaseHTTPRequestHandler):
             all_issues = payload.get("allIssues") or []
             seo_score = payload.get("seoScore", 0)
             url = (payload.get("url") or "").strip()
+            # Optional: overrides the default "for {url}" phrasing, e.g. the
+            # Results page's sitewide summary passes "across N audited pages".
+            context_label = (payload.get("contextLabel") or "").strip() or None
             api_key = payload.get("apiKey") or os.environ.get("GROQ_API_KEY")
 
-            summary = explain_audit(all_issues, seo_score, api_key, url=url)
+            summary = explain_audit(all_issues, seo_score, api_key, url=url, context_label=context_label)
             status = 200 if summary.get("ok") else 400
             send_json(self, status, summary)
         except Exception:  # noqa: BLE001

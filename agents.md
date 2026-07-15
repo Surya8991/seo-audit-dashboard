@@ -71,18 +71,50 @@ prior standalone Streamlit SEO audit tool ported in on top.
   `api/sitemap.py` (`{urls, total_found, capped}`). Always calls
   `crawl_site(..., run_full_audit=False)`; per-page SEO audits happen via the
   same client orchestrator as the other bulk modes, not inside this endpoint.
-- `api/ai-summary.py`: Groq AI plain-English summary endpoint
-- `api/chat.py`: multi-turn AI chatbot endpoint (`modules/ai_assist.py::chat_with_assistant`),
-  backing the global `components/ChatWidget.tsx` floating widget (rendered in
-  `AppShell.tsx`, so it's on every page). Defaults to app-help Q&A; when the
-  user is on `/results` or `/detail` with results loaded, the widget attaches
-  a small `auditContext` (url/score/top issues, built client-side in
-  `ChatWidget.tsx::buildAuditContext`) so the assistant can answer questions
-  about the actual audit, not just the app. Conversation history is sent back
-  each turn (no server-side session) and bounded on both ends
-  (`_MAX_CHAT_TURNS`/`_MAX_CHAT_CONTEXT_CHARS` in `ai_assist.py`,
-  `MAX_MESSAGES`/`MAX_MESSAGE_CHARS` in `api/chat.py`) since it's a raw
-  per-request Groq call, not a managed session.
+- **AI layer** (`modules/ai_assist.py`, all Groq): three entry points, all via
+  the shared `_chat()` HTTP helper (3x retry on 429/5xx, optional
+  `json_mode=True` requests Groq's `response_format: json_object` with an
+  automatic one-retry fallback to plain text if the model/account 400s on it).
+  - `explain_audit(all_issues, seo_score, api_key, url="", context_label=None)`
+    → `api/ai-summary.py`: plain-English summary + top actions, JSON-mode
+    parsed via `_parse_summary_reply` (falls back to the legacy numbered-list
+    regex parse if JSON parsing fails). `context_label` overrides the default
+    "for {url}" phrasing — the Results page's sitewide summary passes
+    "across N audited pages (sitewide)" with the aggregated issue list
+    instead of one page's. Rendered via the shared
+    `components/AiSummaryCard.tsx` on both Detail (one URL) and Results
+    (sitewide rollup), cached per `cacheKey` in `AuditContext`'s
+    `aiSummaryCache` (see `lib/aiSummaryCache.ts::fingerprintForSummary`) so
+    reopening unchanged data doesn't re-spend an API call.
+  - `chat_with_assistant(messages, api_key, audit_context=None)` →
+    `api/chat.py`: multi-turn chatbot, backing the global
+    `components/ChatWidget.tsx` floating widget (rendered in `AppShell.tsx`,
+    on every page). Defaults to app-help Q&A; on `/results`/`/detail` with
+    results loaded, attaches `auditContext` (url/score/top issues) **plus**
+    `kb_notes` — matched entries from `lib/commonIssuesKB.ts` for the top
+    issues (`ChatWidget.tsx::buildKbNotes`), so the assistant answers from
+    the app's own curated explanations instead of general model knowledge
+    for issues the KB covers. Conversation history is resent each turn (no
+    server-side session) and bounded on both ends
+    (`_MAX_CHAT_TURNS`/`_MAX_CHAT_CONTEXT_CHARS` in `ai_assist.py`,
+    `MAX_MESSAGES`/`MAX_MESSAGE_CHARS` in `api/chat.py`). The widget
+    progressively reveals a reply client-side (`ChatWidget.tsx::startReveal`,
+    triggered from the `send()` handler, not a `useEffect`, to dodge both a
+    visual flash and the `react-hooks/set-state-in-effect` lint rule) — true
+    server-side token streaming isn't reliably supported on Vercel's classic
+    Python (`BaseHTTPRequestHandler`) runtime these `api/*.py` files use.
+  - `suggest_fix(issue_title, page_context, api_key)` → `api/fix-suggestion.py`:
+    drafts an actual ready-to-use replacement (e.g. a real meta description)
+    for a **narrow, well-defined set of issue types** — see
+    `_FIX_TARGET_PATTERNS`/`detect_fix_target` (title/description/H1 only).
+    `lib/fixSuggestable.ts::detectFixTarget` mirrors the same patterns
+    client-side so `components/ui.tsx::IssueRow` only shows "✨ Suggest a
+    fix" for issues it can actually draft for, without a round-trip just to
+    find out. Only wired up where a single concrete page is in scope (Detail
+    page passes `pageContext` — title/description/h1/content snippet from
+    `r.metadata`/`r.heading_detail`/`r.content.intro_paragraphs` — into every
+    `IssueRow`); there's no sitewide equivalent since a fix draft needs one
+    page's real content to ground in, not an aggregate.
 - `api/pagespeed.py`, `api/export.py`, `api/config-status.py`
 - `modules/auditor.py`: core fetch + orchestration, SSRF guard (`validate_audit_url`).
   `audit_url(..., prefetched=None)` accepts an already-fetched page (the shape

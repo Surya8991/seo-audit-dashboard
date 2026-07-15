@@ -2,13 +2,19 @@
 chat_with_assistant's context-building / error handling. Network (_chat) is
 mocked; nothing here hits the real Groq API."""
 
-from unittest.mock import patch
+import json
+from unittest.mock import MagicMock, patch
 
 from modules.ai_assist import (
     _MAX_CHAT_CONTEXT_CHARS,
     _MAX_CHAT_TURNS,
+    _chat,
+    _parse_summary_reply,
     _trim_chat_messages,
     chat_with_assistant,
+    detect_fix_target,
+    explain_audit,
+    suggest_fix,
 )
 
 
@@ -72,8 +78,195 @@ def test_chat_includes_audit_context_in_system_prompt(mock_chat):
     assert "Missing meta description" in system_content
 
 
+@patch("modules.ai_assist._chat")
+def test_chat_includes_kb_notes_in_system_prompt(mock_chat):
+    mock_chat.return_value = "Here's how to fix it."
+    chat_with_assistant(
+        [{"role": "user", "content": "How do I fix the meta description?"}],
+        api_key="fake-key",
+        audit_context={
+            "url": "https://example.com",
+            "seo_score": 55,
+            "top_issues": ["Missing meta description"],
+            "kb_notes": [
+                {
+                    "issue": "Missing meta description",
+                    "whatIsIt": "The page has no meta description tag.",
+                    "recommendedFix": "Write a unique 150-160 character description.",
+                }
+            ],
+        },
+    )
+    system_content = mock_chat.call_args[0][0][0]["content"]
+    assert "knowledge base" in system_content
+    assert "The page has no meta description tag." in system_content
+    assert "Write a unique 150-160 character description." in system_content
+
+
+@patch("modules.ai_assist._chat")
+def test_chat_without_kb_notes_omits_kb_section(mock_chat):
+    mock_chat.return_value = "ok"
+    chat_with_assistant(
+        [{"role": "user", "content": "hi"}],
+        api_key="fake-key",
+        audit_context={"url": "https://example.com", "seo_score": 55, "top_issues": []},
+    )
+    system_content = mock_chat.call_args[0][0][0]["content"]
+    assert "knowledge base" not in system_content
+
+
 @patch("modules.ai_assist._chat", side_effect=RuntimeError("Groq API unavailable (HTTP 500)"))
 def test_chat_returns_error_on_api_failure(mock_chat):
     result = chat_with_assistant([{"role": "user", "content": "hi"}], api_key="fake-key")
+    assert result["ok"] is False
+    assert "500" in result["error"]
+
+
+# ── _parse_summary_reply / explain_audit JSON mode ──────────────────────────
+
+def test_parse_summary_reply_handles_valid_json():
+    reply = json.dumps({"explanation": "Site is healthy.", "top_actions": ["Fix X", "Fix Y"]})
+    explanation, actions = _parse_summary_reply(reply)
+    assert explanation == "Site is healthy."
+    assert actions == ["Fix X", "Fix Y"]
+
+
+def test_parse_summary_reply_caps_actions_at_five():
+    reply = json.dumps({"explanation": "ok", "top_actions": [f"Fix {i}" for i in range(10)]})
+    _, actions = _parse_summary_reply(reply)
+    assert len(actions) == 5
+
+
+def test_parse_summary_reply_falls_back_on_malformed_json():
+    reply = "1. Fix the meta description because it's missing.\n2. Add an H1 heading.\nOverall the site needs work."
+    explanation, actions = _parse_summary_reply(reply)
+    assert len(actions) == 2
+    assert actions[0] == "Fix the meta description because it's missing."
+    assert "Overall the site needs work." in explanation
+
+
+def test_parse_summary_reply_falls_back_on_empty_json_object():
+    # Valid JSON but neither expected key present -> still use the fallback.
+    reply = '{"unexpected": "shape"}'
+    explanation, actions = _parse_summary_reply(reply)
+    assert explanation == '{"unexpected": "shape"}'
+    assert actions == []
+
+
+@patch("modules.ai_assist._chat")
+def test_explain_audit_requests_json_mode(mock_chat):
+    mock_chat.return_value = json.dumps({"explanation": "Good.", "top_actions": ["Fix meta"]})
+    result = explain_audit([], 80, "fake-key", url="https://example.com/")
+    assert result["ok"] is True
+    assert result["explanation"] == "Good."
+    assert result["top_actions"] == ["Fix meta"]
+    assert mock_chat.call_args.kwargs.get("json_mode") is True
+
+
+@patch("modules.ai_assist._chat")
+def test_explain_audit_context_label_overrides_url_phrasing(mock_chat):
+    mock_chat.return_value = json.dumps({"explanation": "ok", "top_actions": []})
+    explain_audit([], 50, "fake-key", url="https://example.com/", context_label="across 10 audited pages (sitewide)")
+    user_msg = mock_chat.call_args[0][0][1]["content"]
+    assert "across 10 audited pages (sitewide)" in user_msg
+    assert "for https://example.com/" not in user_msg
+
+
+@patch("modules.ai_assist.requests.post")
+def test_chat_json_mode_falls_back_to_plain_on_400(mock_post):
+    # `body` is mutated in place across retries, so snapshot each call's
+    # json kwarg (a dict copy) at call time rather than reading it back from
+    # mock_post.call_args_list afterward, which would all see the same
+    # already-mutated dict.
+    seen_bodies = []
+    rejected = MagicMock(status_code=400)
+    ok_resp = MagicMock(status_code=200)
+    ok_resp.json.return_value = {"choices": [{"message": {"content": "plain text reply"}}]}
+    responses = [rejected, ok_resp]
+
+    def _side_effect(*args, **kwargs):
+        seen_bodies.append(dict(kwargs["json"]))
+        return responses.pop(0)
+
+    mock_post.side_effect = _side_effect
+
+    result = _chat([{"role": "user", "content": "hi"}], "fake-key", json_mode=True)
+
+    assert result == "plain text reply"
+    assert mock_post.call_count == 2
+    assert "response_format" in seen_bodies[0]
+    assert "response_format" not in seen_bodies[1]
+
+
+# ── detect_fix_target / suggest_fix ─────────────────────────────────────────
+
+def test_detect_fix_target_matches_meta_title():
+    assert detect_fix_target("Missing Meta Title") == "title"
+    assert detect_fix_target("Meta Title Too Short") == "title"
+    assert detect_fix_target("Meta Title Too Long") == "title"
+
+
+def test_detect_fix_target_matches_meta_description():
+    assert detect_fix_target("Missing Meta Description") == "description"
+    assert detect_fix_target("Meta Description Too Long") == "description"
+
+
+def test_detect_fix_target_matches_h1():
+    assert detect_fix_target("Missing H1 heading") == "h1"
+    assert detect_fix_target("H1 heading is too short (12 chars)") == "h1"
+
+
+def test_detect_fix_target_returns_none_for_unsupported_issue():
+    assert detect_fix_target("Broken Internal Link") is None
+    assert detect_fix_target("Missing Alt Text") is None
+
+
+def test_suggest_fix_without_api_key_returns_error():
+    result = suggest_fix("Missing Meta Description", {}, api_key="")
+    assert result == {"ok": False, "error": "Groq API key not configured"}
+
+
+def test_suggest_fix_returns_error_for_unsupported_issue():
+    result = suggest_fix("Broken Internal Link", {}, api_key="fake-key")
+    assert result["ok"] is False
+    assert "No fix generator" in result["error"]
+
+
+@patch("modules.ai_assist._chat")
+def test_suggest_fix_returns_drafted_suggestion(mock_chat):
+    mock_chat.return_value = json.dumps({
+        "suggestion": "Buy Handmade Ceramic Mugs Online | Acme Pottery",
+        "rationale": "Includes the product and brand within 60 characters.",
+    })
+    result = suggest_fix(
+        "Missing Meta Title",
+        {"url": "https://example.com/mugs", "content_snippet": "Handmade ceramic mugs, fired in our studio."},
+        api_key="fake-key",
+    )
+    assert result["ok"] is True
+    assert result["target"] == "title"
+    assert "Ceramic Mugs" in result["suggestion"]
+    assert mock_chat.call_args.kwargs.get("json_mode") is True
+
+
+@patch("modules.ai_assist._chat")
+def test_suggest_fix_falls_back_to_raw_text_on_malformed_json(mock_chat):
+    mock_chat.return_value = "Just a plain suggestion with no JSON wrapper."
+    result = suggest_fix("Missing H1 heading", {"url": "https://example.com/"}, api_key="fake-key")
+    assert result["ok"] is True
+    assert result["suggestion"] == "Just a plain suggestion with no JSON wrapper."
+    assert result["rationale"] == ""
+
+
+@patch("modules.ai_assist._chat")
+def test_suggest_fix_returns_error_when_suggestion_empty(mock_chat):
+    mock_chat.return_value = json.dumps({"suggestion": "", "rationale": "n/a"})
+    result = suggest_fix("Missing Meta Description", {}, api_key="fake-key")
+    assert result["ok"] is False
+
+
+@patch("modules.ai_assist._chat", side_effect=RuntimeError("Groq API unavailable (HTTP 500)"))
+def test_suggest_fix_returns_error_on_api_failure(mock_chat):
+    result = suggest_fix("Missing Meta Description", {}, api_key="fake-key")
     assert result["ok"] is False
     assert "500" in result["error"]

@@ -3,6 +3,7 @@ import { scoreColor, severityColor } from "@/lib/format";
 import type { Issue } from "@/lib/types";
 import { fixDifficulty, type Difficulty } from "@/lib/difficulty";
 import { explainCommonIssue } from "@/lib/commonIssuesKB";
+import { detectFixTarget, type FixPageContext, type FixSuggestion } from "@/lib/fixSuggestable";
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <div className={`card p-5 ${className}`}>{children}</div>;
@@ -139,9 +140,26 @@ export function DifficultyBadge({ difficulty }: { difficulty: Difficulty }) {
   );
 }
 
-export function IssueRow({ issue }: { issue: Issue }) {
+/**
+ * `pageContext`/`groqApiKey` are optional: only the Detail page (which has a
+ * single concrete AuditResult in scope) passes them, enabling the
+ * "✨ Suggest a fix" action for issues detectFixTarget() recognizes
+ * (metadata/H1 issues with a well-defined, draftable replacement). Callers
+ * without page context (e.g. any future sitewide/aggregated issue list) just
+ * don't render it — there's no single page to draft a fix for.
+ */
+export function IssueRow({
+  issue,
+  pageContext,
+  groqApiKey,
+}: {
+  issue: Issue;
+  pageContext?: FixPageContext;
+  groqApiKey?: string;
+}) {
   const [expanded, setExpanded] = useState(false);
   const explanation = explainCommonIssue(issue);
+  const fixTarget = pageContext ? detectFixTarget(issue.issue) : null;
 
   return (
     <div className="border-b border-[var(--seo-border)] py-3 last:border-0">
@@ -158,14 +176,19 @@ export function IssueRow({ issue }: { issue: Issue }) {
           <div className="mt-0.5 text-xs text-[var(--seo-text-light)]">
             {issue.recommendation}
           </div>
-          {explanation ? (
-            <button
-              type="button"
-              onClick={() => setExpanded((v) => !v)}
-              className="mt-1 text-xs font-medium text-[var(--seo-accent)] hover:underline"
-            >
-              {expanded ? "Hide details" : "Learn more →"}
-            </button>
+          <div className="mt-1 flex flex-wrap items-center gap-3">
+            {explanation ? (
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="text-xs font-medium text-[var(--seo-accent)] hover:underline"
+              >
+                {expanded ? "Hide details" : "Learn more →"}
+              </button>
+            ) : null}
+          </div>
+          {fixTarget && pageContext ? (
+            <FixSuggestionButton issue={issue} pageContext={pageContext} apiKey={groqApiKey} />
           ) : null}
         </div>
         <span className="shrink-0 text-xs text-[var(--seo-muted)]">
@@ -173,6 +196,76 @@ export function IssueRow({ issue }: { issue: Issue }) {
         </span>
       </div>
       {expanded && explanation ? <CommonIssueDetail explanation={explanation} /> : null}
+    </div>
+  );
+}
+
+function FixSuggestionButton({
+  issue,
+  pageContext,
+  apiKey,
+}: {
+  issue: Issue;
+  pageContext: FixPageContext;
+  apiKey?: string;
+}) {
+  const [state, setState] = useState<"idle" | "loading">("idle");
+  const [result, setResult] = useState<FixSuggestion | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function run() {
+    setState("loading");
+    setResult(null);
+    setCopied(false);
+    try {
+      const res = await fetch("/api/fix-suggestion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ issue: issue.issue, pageContext, apiKey: apiKey || undefined }),
+      });
+      const data: FixSuggestion = await res.json();
+      setResult(data);
+    } catch {
+      setResult({ ok: false, error: "Request failed." });
+    } finally {
+      setState("idle");
+    }
+  }
+
+  function copy() {
+    if (!result?.suggestion) return;
+    navigator.clipboard?.writeText(result.suggestion).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
+
+  return (
+    <div className="mt-1.5">
+      <button
+        type="button"
+        onClick={run}
+        disabled={state === "loading"}
+        className="text-xs font-medium text-[var(--seo-accent)] hover:underline disabled:opacity-60"
+      >
+        {state === "loading" ? "Drafting…" : "✨ Suggest a fix"}
+      </button>
+      {result?.ok ? (
+        <div className="mt-2 rounded-lg bg-[var(--seo-card-hover)] p-2 text-xs">
+          <p className="text-[var(--seo-text)]">{result.suggestion}</p>
+          {result.rationale ? <p className="mt-1 text-[var(--seo-muted)]">{result.rationale}</p> : null}
+          <button
+            type="button"
+            onClick={copy}
+            className="mt-1 font-medium text-[var(--seo-accent)] hover:underline"
+          >
+            {copied ? "Copied!" : "Copy"}
+          </button>
+        </div>
+      ) : null}
+      {result && !result.ok ? (
+        <p className="mt-1 text-xs text-[var(--seo-error)]">{result.error}</p>
+      ) : null}
     </div>
   );
 }

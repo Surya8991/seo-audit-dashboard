@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { AuditResult, NavFilter } from "@/lib/types";
 import { idbGet, idbSet } from "@/lib/state/idbStore";
+import type { AiSummaryCacheEntry } from "@/lib/aiSummaryCache";
 
 const STORAGE_KEY = "seo-audit-dashboard-state-v1";
 // A bulk audit's results routinely exceed localStorage's ~5-10MB per-origin
@@ -26,6 +27,10 @@ interface PersistedState {
   results: AuditResult[];
   lastAuditDate: string | null;
   groqApiKey: string;
+  // Keyed by URL (or "__sitewide__" for the Results page rollup summary) so
+  // reopening an unchanged result's AI Summary doesn't re-spend an API call;
+  // see lib/aiSummaryCache.ts::fingerprintForSummary for invalidation.
+  aiSummaryCache: Record<string, AiSummaryCacheEntry>;
 }
 
 interface AuditContextValue {
@@ -35,11 +40,13 @@ interface AuditContextValue {
   navFilter: NavFilter | null;
   groqApiKey: string;
   storageWarning: string | null;
+  aiSummaryCache: Record<string, AiSummaryCacheEntry>;
   addResult: (result: AuditResult) => void;
   addResults: (results: AuditResult[]) => void;
   setSelectedUrlIndex: (index: number) => void;
   setNavFilter: (filter: NavFilter | null) => void;
   setGroqApiKey: (key: string) => void;
+  setCachedAiSummary: (key: string, entry: AiSummaryCacheEntry) => void;
   clearAll: () => void;
 }
 
@@ -51,6 +58,7 @@ function normalizePersisted(parsed: unknown): PersistedState {
     results: Array.isArray(p.results) ? p.results : [],
     lastAuditDate: p.lastAuditDate ?? null,
     groqApiKey: typeof p.groqApiKey === "string" ? p.groqApiKey : "",
+    aiSummaryCache: p.aiSummaryCache && typeof p.aiSummaryCache === "object" ? p.aiSummaryCache : {},
   };
 }
 
@@ -83,6 +91,7 @@ export function AuditProvider({ children }: { children: ReactNode }) {
   const [selectedUrlIndex, setSelectedUrlIndex] = useState(0);
   const [navFilter, setNavFilter] = useState<NavFilter | null>(null);
   const [groqApiKey, setGroqApiKey] = useState("");
+  const [aiSummaryCache, setAiSummaryCache] = useState<Record<string, AiSummaryCacheEntry>>({});
   const [hydrated, setHydrated] = useState(false);
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
 
@@ -93,6 +102,7 @@ export function AuditProvider({ children }: { children: ReactNode }) {
       setResults(persisted.results);
       setLastAuditDate(persisted.lastAuditDate);
       setGroqApiKey(persisted.groqApiKey);
+      setAiSummaryCache(persisted.aiSummaryCache);
       setHydrated(true);
     });
     return () => {
@@ -102,7 +112,7 @@ export function AuditProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!hydrated || typeof window === "undefined") return;
-    const payload: PersistedState = { results, lastAuditDate, groqApiKey };
+    const payload: PersistedState = { results, lastAuditDate, groqApiKey, aiSummaryCache };
     idbSet(STORAGE_KEY, payload)
       .then(() => setStorageWarning(null))
       .catch(async () => {
@@ -126,7 +136,7 @@ export function AuditProvider({ children }: { children: ReactNode }) {
           setStorageWarning("Could not save audit results to browser storage. Recent results may not persist.");
         }
       });
-  }, [results, lastAuditDate, groqApiKey, hydrated]);
+  }, [results, lastAuditDate, groqApiKey, aiSummaryCache, hydrated]);
 
   const value = useMemo<AuditContextValue>(
     () => ({
@@ -136,6 +146,7 @@ export function AuditProvider({ children }: { children: ReactNode }) {
       navFilter,
       groqApiKey,
       storageWarning,
+      aiSummaryCache,
       addResult: (result) => {
         setResults((prev) => {
           const existingIdx = prev.findIndex((r) => r.url === result.url);
@@ -176,14 +187,18 @@ export function AuditProvider({ children }: { children: ReactNode }) {
       setSelectedUrlIndex,
       setNavFilter,
       setGroqApiKey,
+      setCachedAiSummary: (key, entry) => {
+        setAiSummaryCache((prev) => ({ ...prev, [key]: entry }));
+      },
       clearAll: () => {
         setResults([]);
         setLastAuditDate(null);
         setSelectedUrlIndex(0);
         setNavFilter(null);
+        setAiSummaryCache({});
       },
     }),
-    [results, lastAuditDate, selectedUrlIndex, navFilter, groqApiKey, storageWarning],
+    [results, lastAuditDate, selectedUrlIndex, navFilter, groqApiKey, storageWarning, aiSummaryCache],
   );
 
   return <AuditContext.Provider value={value}>{children}</AuditContext.Provider>;

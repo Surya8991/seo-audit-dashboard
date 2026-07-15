@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAudit } from "@/lib/state/AuditContext";
 import { Card, EmptyState, PageHeader, ScoreBadge, ScoreCircle, StatusPill } from "@/components/ui";
 import { ExportBar } from "@/components/ExportBar";
+import { AiSummaryCard } from "@/components/AiSummaryCard";
 import { allIssuesOf, avgScore } from "@/lib/aggregate";
 import { difficultyBreakdown } from "@/lib/difficulty";
 import { downloadCsv, severityColor } from "@/lib/format";
@@ -229,6 +230,16 @@ export default function ResultsPage() {
             </div>
           </div>
         </Card>
+      ) : null}
+
+      {rollup ? (
+        <AiSummaryCard
+          className="mb-4"
+          cacheKey="__sitewide__"
+          seoScore={Math.round(rollup.avg)}
+          issues={allIssuesOf(results)}
+          contextLabel={`across ${results.length} audited pages (sitewide)`}
+        />
       ) : null}
 
       {/* Sitewide (cross-URL) concept, moved here from the per-URL Detail

@@ -15,6 +15,7 @@ import { useSelectedChecks } from "@/lib/useSelectedChecks";
 import { LinksView } from "@/components/detail/LinksView";
 import { HeadingsView } from "@/components/detail/HeadingsView";
 import { PerformanceView } from "@/components/detail/PerformanceView";
+import { AiSummaryCard } from "@/components/AiSummaryCard";
 
 // "Recommendations" used to be its own 8th tab, but it just re-rendered the
 // top-10 issues through the same IssueRow the Issues tab already uses —
@@ -143,18 +144,9 @@ function KeyValueGrid({ data }: { data: Record<string, unknown> }) {
   );
 }
 
-interface AiSummary {
-  ok: boolean;
-  explanation?: string;
-  top_actions?: string[];
-  error?: string;
-}
-
 export default function DetailPage() {
   const { results, selectedUrlIndex, setSelectedUrlIndex, groqApiKey } = useAudit();
   const [tab, setTab] = useState<Tab>("Overview");
-  const [aiSummary, setAiSummary] = useState<AiSummary | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
   const { selected: selectedChecks } = useSelectedChecks();
 
   if (results.length === 0) {
@@ -172,29 +164,15 @@ export default function DetailPage() {
   const issues = r.all_issues || [];
   const grouped = getThematicIssues(issues);
   const topIssues = getTopIssuesByImpact(issues, 10);
-
-  async function runAiSummary() {
-    setAiLoading(true);
-    setAiSummary(null);
-    try {
-      const res = await fetch("/api/ai-summary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: r.url,
-          seoScore: r.seo_score,
-          allIssues: issues,
-          apiKey: groqApiKey || undefined,
-        }),
-      });
-      const data = await res.json();
-      setAiSummary(data);
-    } catch {
-      setAiSummary({ ok: false, error: "Request failed" });
-    } finally {
-      setAiLoading(false);
-    }
-  }
+  // Grounds the "Suggest a fix" action (IssueRow -> FixSuggestionButton) in
+  // this page's real content instead of letting the model invent facts.
+  const fixPageContext = {
+    url: r.url,
+    title: r.metadata?.title,
+    description: r.metadata?.description,
+    h1: r.heading_detail?.h1_text,
+    content_snippet: (r.content?.intro_paragraphs || []).join(" ").slice(0, 1500),
+  };
 
   return (
     <div>
@@ -264,7 +242,7 @@ export default function DetailPage() {
                 </button>
               </div>
               {topIssues.slice(0, 3).map((issue, i) => (
-                <IssueRow key={i} issue={issue} />
+                <IssueRow key={i} issue={issue} pageContext={fixPageContext} groqApiKey={groqApiKey} />
               ))}
             </Card>
           ) : null}
@@ -316,42 +294,13 @@ export default function DetailPage() {
             </div>
           </Card>
 
-          <Card className="lg:col-span-2">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-[var(--seo-subheading)]">
-                AI Summary
-              </h3>
-              <button
-                type="button"
-                onClick={runAiSummary}
-                disabled={aiLoading}
-                className="rounded-lg border border-[var(--seo-border-strong)] px-3 py-1.5 text-sm font-medium text-[var(--seo-subheading)] hover:bg-[var(--seo-card-hover)] disabled:opacity-50"
-              >
-                {aiLoading ? "Summarising…" : "Generate AI Summary"}
-              </button>
-            </div>
-            {!aiSummary && !aiLoading ? (
-              <p className="text-sm text-[var(--seo-muted)]">
-                Get a plain-English health summary and prioritized fixes powered by Groq. Add
-                a key in Settings, or the app falls back to the server default if configured.
-              </p>
-            ) : null}
-            {aiSummary && !aiSummary.ok ? (
-              <p className="text-sm text-[var(--seo-error)]">{aiSummary.error}</p>
-            ) : null}
-            {aiSummary && aiSummary.ok ? (
-              <div className="flex flex-col gap-3">
-                <p className="text-sm text-[var(--seo-text)]">{aiSummary.explanation}</p>
-                {aiSummary.top_actions && aiSummary.top_actions.length > 0 ? (
-                  <ul className="list-disc pl-5 text-sm text-[var(--seo-text)]">
-                    {aiSummary.top_actions.map((action, i) => (
-                      <li key={i}>{action}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            ) : null}
-          </Card>
+          <AiSummaryCard
+            className="lg:col-span-2"
+            cacheKey={r.url}
+            url={r.url}
+            seoScore={r.seo_score ?? 0}
+            issues={issues}
+          />
         </div>
       ) : null}
 
@@ -674,7 +623,7 @@ export default function DetailPage() {
                 Top Issues by Impact
               </h3>
               {topIssues.slice(0, 5).map((issue, i) => (
-                <IssueRow key={i} issue={issue} />
+                <IssueRow key={i} issue={issue} pageContext={fixPageContext} groqApiKey={groqApiKey} />
               ))}
             </Card>
           ) : null}
@@ -684,7 +633,7 @@ export default function DetailPage() {
                 {theme} ({themeIssues.length})
               </h3>
               {themeIssues.map((issue, i) => (
-                <IssueRow key={i} issue={issue} />
+                <IssueRow key={i} issue={issue} pageContext={fixPageContext} groqApiKey={groqApiKey} />
               ))}
             </Card>
           ))}

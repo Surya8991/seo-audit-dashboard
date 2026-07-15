@@ -4,20 +4,51 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAudit } from "@/lib/state/AuditContext";
 import { allIssuesOf, avgScore, getTopIssuesByImpact } from "@/lib/aggregate";
-import type { AuditResult } from "@/lib/types";
+import { explainCommonIssue } from "@/lib/commonIssuesKB";
+import type { AuditResult, Issue } from "@/lib/types";
 
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
 }
 
+interface KbNote {
+  issue: string;
+  whatIsIt: string;
+  recommendedFix: string;
+}
+
 interface AuditContextPayload {
   url?: string;
   seo_score?: number;
   top_issues?: string[];
+  kb_notes?: KbNote[];
 }
 
 const MAX_MESSAGE_CHARS = 4000;
+
+// Vercel's Python serverless runtime (api/chat.py's BaseHTTPRequestHandler
+// model) doesn't reliably support true token-by-token streaming, so this
+// reveals the already-complete reply progressively client-side instead —
+// same "it's typing" feel without a streaming backend rewrite.
+const REVEAL_CHARS_PER_TICK = 3;
+const REVEAL_INTERVAL_MS = 15;
+
+/** Looks up each of the given issues in the curated Common Issues KB
+ * (lib/commonIssuesKB.ts — the same source that powers the "Learn more"
+ * expansion on issue rows) so the assistant answers from the app's own
+ * grounded explanations instead of the model's general knowledge, which
+ * won't know this app's specific fix guidance/thresholds. */
+function buildKbNotes(issues: Issue[]): KbNote[] {
+  const notes: KbNote[] = [];
+  for (const issue of issues) {
+    const explanation = explainCommonIssue(issue);
+    if (explanation) {
+      notes.push({ issue: issue.issue, whatIsIt: explanation.whatIsIt, recommendedFix: explanation.recommendedFix });
+    }
+  }
+  return notes;
+}
 
 /** Small audit summary for the assistant's system prompt: the single result
  * on Detail, or a sitewide rollup on Results, so it can answer questions
@@ -27,26 +58,32 @@ function buildAuditContext(pathname: string, results: AuditResult[], selectedUrl
 
   if (pathname === "/detail") {
     const r = results[Math.min(selectedUrlIndex, results.length - 1)];
+    const topIssues = getTopIssuesByImpact(r.all_issues || [], 5);
     return {
       url: r.url,
       seo_score: r.seo_score,
-      top_issues: getTopIssuesByImpact(r.all_issues || [], 5).map((i) => i.issue),
+      top_issues: topIssues.map((i) => i.issue),
+      kb_notes: buildKbNotes(topIssues),
     };
   }
 
   if (pathname === "/results") {
     if (results.length === 1) {
       const r = results[0];
+      const topIssues = getTopIssuesByImpact(r.all_issues || [], 5);
       return {
         url: r.url,
         seo_score: r.seo_score,
-        top_issues: getTopIssuesByImpact(r.all_issues || [], 5).map((i) => i.issue),
+        top_issues: topIssues.map((i) => i.issue),
+        kb_notes: buildKbNotes(topIssues),
       };
     }
+    const topIssues = getTopIssuesByImpact(allIssuesOf(results), 5);
     return {
       url: `${results.length} audited URLs (sitewide)`,
       seo_score: Math.round(avgScore(results)),
-      top_issues: getTopIssuesByImpact(allIssuesOf(results), 5).map((i) => i.issue),
+      top_issues: topIssues.map((i) => i.issue),
+      kb_notes: buildKbNotes(topIssues),
     };
   }
 
@@ -61,13 +98,42 @@ export function ChatWidget() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [revealState, setRevealState] = useState<{ index: number; count: number } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const revealIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages, open]);
+  }, [messages, open, revealState]);
+
+  // Cleanup only (no setState here) — clears a still-running reveal interval
+  // if the widget unmounts mid-animation.
+  useEffect(() => {
+    return () => {
+      if (revealIntervalRef.current) clearInterval(revealIntervalRef.current);
+    };
+  }, []);
 
   const auditContext = buildAuditContext(pathname, results, selectedUrlIndex);
+
+  /** Progressively reveals a just-added assistant reply instead of dropping
+   * it in fully-formed all at once. Triggered from the send() handler (an
+   * event callback), not a useEffect keyed on `messages`, so the reveal
+   * starts in the same render pass the message is added — no flash of the
+   * full text before the animation kicks in. */
+  function startReveal(index: number, fullText: string) {
+    if (revealIntervalRef.current) clearInterval(revealIntervalRef.current);
+    setRevealState({ index, count: 0 });
+    let count = 0;
+    revealIntervalRef.current = setInterval(() => {
+      count = Math.min(count + REVEAL_CHARS_PER_TICK, fullText.length);
+      setRevealState({ index, count });
+      if (count >= fullText.length && revealIntervalRef.current) {
+        clearInterval(revealIntervalRef.current);
+        revealIntervalRef.current = null;
+      }
+    }, REVEAL_INTERVAL_MS);
+  }
 
   async function send() {
     const text = input.trim().slice(0, MAX_MESSAGE_CHARS);
@@ -89,7 +155,10 @@ export function ChatWidget() {
       });
       const data = await res.json();
       if (data.ok) {
-        setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
+        const replyText = String(data.reply ?? "");
+        const assistantIndex = nextMessages.length;
+        setMessages((prev) => [...prev, { role: "assistant", content: replyText }]);
+        startReveal(assistantIndex, replyText);
       } else {
         setError(data.error || "The assistant couldn't respond.");
       }
@@ -132,18 +201,25 @@ export function ChatWidget() {
                 {auditContext ? " for the results you're viewing" : ""}.
               </p>
             ) : (
-              messages.map((m, i) => (
-                <div
-                  key={i}
-                  className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
-                    m.role === "user"
-                      ? "ml-auto bg-[var(--seo-accent)] text-white"
-                      : "bg-[var(--seo-card-hover)] text-[var(--seo-text)]"
-                  }`}
-                >
-                  {m.content}
-                </div>
-              ))
+              messages.map((m, i) => {
+                const isRevealing = m.role === "assistant" && revealState?.index === i;
+                const content = isRevealing ? m.content.slice(0, revealState!.count) : m.content;
+                return (
+                  <div
+                    key={i}
+                    className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                      m.role === "user"
+                        ? "ml-auto bg-[var(--seo-accent)] text-white"
+                        : "bg-[var(--seo-card-hover)] text-[var(--seo-text)]"
+                    }`}
+                  >
+                    {content}
+                    {isRevealing && revealState!.count < m.content.length ? (
+                      <span className="animate-pulse">▍</span>
+                    ) : null}
+                  </div>
+                );
+              })
             )}
             {loading ? (
               <div className="max-w-[85%] rounded-lg bg-[var(--seo-card-hover)] px-3 py-2 text-sm text-[var(--seo-muted)]">

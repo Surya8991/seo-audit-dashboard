@@ -7,6 +7,7 @@
     "api/pagespeed.py": { "maxDuration": 90 },
     "api/export.py": { "maxDuration": 30 },
     "api/config-status.py": { "maxDuration": 10 },
-    "api/ai-summary.py": { "maxDuration": 30 }
+    "api/ai-summary.py": { "maxDuration": 30 },
+    "api/fix-suggestion.py": { "maxDuration": 30 }
   }
 }
