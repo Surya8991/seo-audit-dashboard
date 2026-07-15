@@ -234,6 +234,21 @@ Live-verified end-to-end against `https://www.edstellar.com/sitemap.xml`
 (2,461 URLs), see `tests/test_sitewide_pipeline_live.py` (opt-in,
 `RUN_LIVE_TESTS=1`) and `PROJECT_LOG.md` session history.
 
+## Favicon / metadata / own-site SEO
+The app is itself set to `noindex, nofollow` (internal tool, confirmed with
+the user) via `metadata.robots` in `app/layout.tsx` + `app/robots.ts`'s
+disallow-all — do not flip this without asking, it was an explicit choice,
+not an oversight. Icons (`app/icon.tsx`, `app/apple-icon.tsx`) and the Open
+Graph card (`app/opengraph-image.tsx`) are generated at build time via
+`next/og`'s `ImageResponse` (Satori), drawn as plain CSS shapes (a circle +
+rotated bar for the magnifying glass) rather than the 🔍 emoji glyph:
+Satori has no bundled emoji font, so an emoji character silently renders as
+a blurry fallback glyph instead of the icon. `app/manifest.ts` references
+those same icon routes. `metadataBase`/`openGraph.url` in `app/layout.tsx`
+point at `https://seo-audit-dashboard-topaz.vercel.app` (update if the
+deploy domain changes). The old default Next.js `app/favicon.ico` was
+deleted in favor of `icon.tsx`.
+
 ## Security headers / CSP
 `proxy.ts` sets a nonce-based Content-Security-Policy per request
 (Next.js's documented pattern: `script-src 'self' 'nonce-<random>'

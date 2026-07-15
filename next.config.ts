@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-// Content-Security-Policy is set per-request in middleware.ts instead (it
+// Content-Security-Policy is set per-request in proxy.ts instead (it
 // needs a fresh nonce per request for Next.js's inline hydration scripts).
 const SECURITY_HEADERS = [
   { key: "X-Frame-Options", value: "DENY" },
