@@ -12,10 +12,10 @@ export function ThemeToggle() {
       type="button"
       onClick={toggle}
       aria-label="Toggle dark mode"
-      className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-[var(--seo-sidebar-text)] transition-colors hover:bg-[var(--seo-sidebar-hover)] hover:text-[var(--seo-sidebar-text-active)]"
+      className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-[var(--seo-text-light)] transition-colors hover:bg-[var(--seo-card-hover)] hover:text-[var(--seo-heading)]"
     >
       <span>{dark ? "🌙" : "☀️"}</span>
-      <span>{dark ? "Dark mode" : "Light mode"}</span>
+      <span className="hidden lg:inline">{dark ? "Dark mode" : "Light mode"}</span>
     </button>
   );
 }

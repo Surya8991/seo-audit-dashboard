@@ -22,6 +22,7 @@ from urllib.parse import urlparse
 
 import requests
 
+from modules._http import bulk_url_cap
 from modules.auditor import HEADERS, TIMEOUT, safe_get, validate_audit_url
 
 logger = logging.getLogger(__name__)
@@ -33,10 +34,11 @@ MAX_SITEMAP_URLS = 50_000
 MAX_INDEX_DEPTH = 5          # how deep to recurse nested sitemap indexes
 MAX_SITEMAPS_FETCHED = 200   # backstop against a pathological index fan-out
 DEFAULT_URL_CAP = 50
-# Sitemap resolution is just an XML fetch/parse, cheap even at this size, so
-# it can go much higher than the audit-side chunk size (lib/crawl/chunkedRunner.ts's
-# CHUNK_SIZE=200): a large resolved list gets audited in chunks client-side.
-MAX_URL_CAP = 4000
+# Sitemap resolution itself is just an XML fetch/parse, cheap even at a large
+# size, but the resolved list is what a bulk audit then fans out over one
+# invocation per URL (see modules/_http.py::bulk_url_cap for why this is
+# capped at 200 in production).
+MAX_URL_CAP = bulk_url_cap()
 
 
 class SitemapError(Exception):

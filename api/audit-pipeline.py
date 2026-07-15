@@ -5,7 +5,7 @@ from http.server import BaseHTTPRequestHandler
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from modules._http import read_json_body, require_str, send_json, validate_pattern, validate_url_or_400  # noqa: E402
+from modules._http import bulk_url_cap, read_json_body, require_str, send_json, validate_pattern, validate_url_or_400  # noqa: E402
 from modules.auditor import audit_url  # noqa: E402
 from modules.crawler import CrawlConfig, crawl_site  # noqa: E402
 from modules.pagespeed import fetch_pagespeed  # noqa: E402
@@ -19,14 +19,14 @@ from modules.technical_checks import analyze_domain_health  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
-# Discovery-only cap, raised to match the sitemap/CSV modes' cap per explicit
-# request. Unlike a sitemap fetch (one XML download), BFS crawl discovery does
-# a real HTTP GET per page just to extract links, all within this one
-# synchronous request/invocation (not chunked the way per-URL audits are) —
-# a crawl anywhere near this cap risks exceeding Vercel's maxDuration window.
-# Known risk, not a verified-safe value; lower it if crawls start timing out.
+# Discovery-only cap, shares modules/_http.py::bulk_url_cap with the
+# sitemap/CSV modes (200 in production, see that module for why). Unlike a
+# sitemap fetch (one XML download), BFS crawl discovery does a real HTTP GET
+# per page just to extract links, all within this one synchronous
+# request/invocation (not chunked the way per-URL audits are) — a crawl
+# anywhere near this cap risks exceeding Vercel's maxDuration window.
 DEFAULT_MAX_PAGES = 50
-MAX_MAX_PAGES = 4000
+MAX_MAX_PAGES = bulk_url_cap()
 
 
 def _handle_audit(handler, payload):

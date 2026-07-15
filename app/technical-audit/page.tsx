@@ -22,16 +22,17 @@ import { CheckSelector } from "@/components/CheckSelector";
 type InputMode = "single" | "sitemap" | "list" | "crawl";
 
 const DEFAULT_LIMIT = 50;
-// Sitemap/CSV resolution is cheap (an XML fetch or client-side parsing), so
-// it can go far higher than a single chunk; large lists are audited in
-// CHUNK_SIZE-sized batches (lib/crawl/chunkedRunner.ts), resumable if
-// interrupted. Crawl mode's discovery step is a real per-page fetch done
-// synchronously in one api/crawl.py invocation (not chunked like per-URL
-// audits are) — raised to match MAX_LIMIT per explicit request, but a crawl
-// anywhere near 4000 pages risks exceeding Vercel's per-invocation time
-// limit; this is a known risk, not a verified-safe value.
-const MAX_LIMIT = 4000;
-const CRAWL_MAX_LIMIT = 4000;
+// Matches the backend's bulk-audit cap (modules/_http.py::bulk_url_cap):
+// 200 in a real deployment (production or preview — Vercel sets VERCEL=1
+// for both at build time, see next.config.ts), 5000 in local dev so the
+// client-side parsing/orchestration logic can still be exercised with a
+// large list even though there's no live backend to actually audit it
+// against (plain `next dev` 404s on API calls). Every bulk mode (sitemap,
+// crawl, CSV/paste) shares this same cap; a bare number input used to be
+// the only place this was surfaced, so a clear line above each URL input
+// now states it too (see BulkLimitNote below).
+const MAX_LIMIT = Number(process.env.NEXT_PUBLIC_BULK_URL_LIMIT) || 200;
+const CRAWL_MAX_LIMIT = MAX_LIMIT;
 
 const MODES: { id: InputMode; label: string; icon: string; hint: string; help: string }[] = [
   {
@@ -409,6 +410,7 @@ export default function TechnicalAuditPage() {
 
           {mode === "sitemap" ? (
             <>
+              <BulkLimitNote limit={MAX_LIMIT} />
               <Field label="Sitemap URL or domain">
                 <input
                   type="text"
@@ -443,6 +445,7 @@ export default function TechnicalAuditPage() {
 
           {mode === "crawl" ? (
             <>
+              <BulkLimitNote limit={CRAWL_MAX_LIMIT} />
               <Field label="Start URL">
                 <input
                   type="url"
@@ -508,6 +511,7 @@ export default function TechnicalAuditPage() {
 
           {mode === "list" ? (
             <>
+              <BulkLimitNote limit={MAX_LIMIT} />
               <Field label="Paste URLs (one per line) or a CSV with a url column">
                 <textarea
                   rows={6}
@@ -664,6 +668,14 @@ export default function TechnicalAuditPage() {
         </Card>
       ) : null}
     </div>
+  );
+}
+
+function BulkLimitNote({ limit }: { limit: number }) {
+  return (
+    <p className="-mt-1 text-xs text-[var(--seo-text-light)]">
+      Up to <span className="font-semibold">{limit.toLocaleString()}</span> URLs per audit.
+    </p>
   );
 }
 

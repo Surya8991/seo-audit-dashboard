@@ -32,8 +32,24 @@ prior standalone Streamlit SEO audit tool ported in on top.
   The old `app/export/page.tsx` was removed. Nav is 4 items
   (Dashboard, Technical Audit, Results, Settings): results and detail are one
   section (`/detail` highlights "Results", see `resolveActiveHref` in
-  `components/AppShell.tsx`); the list routes to the detail via
+  `components/Navbar.tsx`); the list routes to the detail via
   `setSelectedUrlIndex` + `router.push("/detail")`.
+- **Top navbar, not a sidebar** (`components/Navbar.tsx`, mounted by
+  `components/AppShell.tsx`): a horizontal bar (logo, nav links, global
+  search, "+ New Audit", a session pill, dark-mode toggle), collapsing into a
+  hamburger dropdown below `md`. Replaced the old fixed-width left sidebar
+  (`AppShell.tsx` used to render `<aside>` directly; now it's just
+  `<Navbar/>` + `<main>` + `<ChatWidget/>`). The old sidebar was always
+  dark regardless of light/dark mode; the navbar uses the same
+  `--seo-card-bg`/`--seo-border` tokens as the rest of the app so nav chrome
+  now follows the theme toggle too (`--seo-sidebar-*` tokens were removed
+  from `globals.css`, nothing else referenced them). `components/GlobalSearch.tsx`
+  filters `AuditContext`'s in-memory `results` by URL substring (no network
+  call, same data the Results page's own search box filters) and jumps to
+  `/detail` via `setSelectedUrlIndex` on select. The session pill
+  (`# URLs · key status`) and Settings' AI-key-configured badges both read
+  `lib/useAiConfigStatus.ts` (one shared `GET /api/ai` call) instead of each
+  page re-deriving its own copy.
 - **Fix-difficulty labels:** every issue carries an `effort` field (Low/Medium/
   High) from `modules/auditor.py::_issue` (the single shared issue-dict
   builder; `technical_checks.py` imports it rather than redefining it — don't
@@ -319,16 +335,36 @@ Flask process + daemon thread + SSE + on-disk checkpointing; the
 `venkataramana-work` branch's own crawl roadmap plans an async job-queue;
 neither model ports here as-is):
 1. One of three URL-resolution steps runs first, each bounded and fast enough
-   to fit in a single invocation: `api/audit-pipeline.py`'s "sitemap" action (sitemap/sitemap-index
-   fetch, cap 4000, `MAX_URL_CAP` in `modules/sitemap_extractor.py`),
-   `api/audit-pipeline.py`'s "crawl" action (BFS link discovery,
-   `run_full_audit=False`, cap raised to 4000 to match sitemap/CSV — see
-   `MAX_MAX_PAGES` in `api/audit-pipeline.py`, a known-risk value since crawl
-   discovery does a real per-page fetch unlike a sitemap's one XML download;
-   not yet verified safe against the 90s `maxDuration`, lower it if crawls
-   start timing out), or
-   the client-side CSV/paste parser (no network call, cap 4000, `MAX_LIMIT`
-   in `app/technical-audit/page.tsx`).
+   to fit in a single invocation: `api/audit-pipeline.py`'s "sitemap" action
+   (sitemap/sitemap-index fetch, `MAX_URL_CAP` in
+   `modules/sitemap_extractor.py`), `api/audit-pipeline.py`'s "crawl" action
+   (BFS link discovery, `run_full_audit=False`, `MAX_MAX_PAGES` in
+   `api/audit-pipeline.py` — a real per-page fetch unlike a sitemap's one
+   XML download, so it's the most time-pressured of the three against the
+   90s `maxDuration`), or the client-side CSV/paste parser (no network call,
+   `MAX_LIMIT` in `app/technical-audit/page.tsx`).
+   - **Bulk URL cap: 200 in production, 5000 in local dev** — shared by all
+     three via `modules/_http.py::bulk_url_cap()` (backend) and
+     `NEXT_PUBLIC_BULK_URL_LIMIT`, baked into the client bundle at build
+     time by `next.config.ts` (`process.env.VERCEL ? "200" : "5000"`;
+     Vercel sets `VERCEL=1` for every build it runs, production AND
+     preview). Was 4000 across the board; that drove real Vercel CPU-usage
+     overage, because `runChunked`/`runCrawl` (below) fan a bulk audit out
+     to one `POST /api/audit-pipeline` invocation per URL, and each
+     invocation runs several `ThreadPoolExecutor`-backed site-health checks
+     (WHOIS/DNS/SSL/robots/sitemap/HTTP2, see `technical_checks.py`) — a
+     4000-URL crawl could spin up thousands of concurrent invocations, each
+     doing real CPU-bound parsing (BeautifulSoup/lxml) on top of the
+     network waits. `api/audit-pipeline.py`'s Python handlers only ever run
+     on Vercel (plain `next dev` 404s on API calls, see the gotcha below),
+     so the backend cap doesn't need a local/prod split — it's always the
+     "prod" branch in practice; the frontend's local-vs-prod split exists so
+     a developer can still exercise the client-side parsing/chunking logic
+     with a large list locally even though there's no live backend to
+     actually audit it against. A clear "Up to N URLs per audit" line
+     (`BulkLimitNote` in `app/technical-audit/page.tsx`) now sits above
+     every bulk-mode URL input (sitemap/crawl/CSV) so this isn't buried in
+     just the numeric "URL limit" field below it.
 2. `lib/crawl/chunkedRunner.ts::runChunked` splits the resolved list into
    `CHUNK_SIZE=200` batches. Each batch goes through
    `lib/crawl/orchestrator.ts::runCrawl`, which fans out bounded-concurrency

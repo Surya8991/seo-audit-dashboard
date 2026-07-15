@@ -1,29 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAudit } from "@/lib/state/AuditContext";
 import { Card, PageHeader } from "@/components/ui";
 import { useTheme } from "@/lib/useTheme";
+import { useAiConfigStatus } from "@/lib/useAiConfigStatus";
 
 export default function SettingsPage() {
   const { results, clearAll, groqApiKey, setGroqApiKey } = useAudit();
   const { dark, setDark } = useTheme();
-  const [psiConfigured, setPsiConfigured] = useState<boolean | null>(null);
-  const [groqConfigured, setGroqConfigured] = useState<boolean | null>(null);
+  const { psiConfigured, groqConfigured } = useAiConfigStatus();
   const [confirmClear, setConfirmClear] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/ai")
-      .then((r) => r.json())
-      .then((d) => {
-        setPsiConfigured(Boolean(d.psiConfigured));
-        setGroqConfigured(Boolean(d.groqConfigured));
-      })
-      .catch(() => {
-        setPsiConfigured(false);
-        setGroqConfigured(false);
-      });
-  }, []);
 
   return (
     <div className="max-w-2xl">

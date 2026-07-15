@@ -8,6 +8,7 @@ byte-identical boilerplate that had drifted into 8 near-copies.
 """
 
 import json
+import os
 import re
 
 from modules.auditor import validate_audit_url
@@ -15,6 +16,23 @@ from modules.auditor import validate_audit_url
 # Client-supplied regex bound: rejects both pathological (ReDoS-prone) input
 # and outright invalid regex before it ever reaches per-URL matching.
 MAX_PATTERN_LENGTH = 200
+
+# Bulk URL cap for sitemap/crawl/CSV audits, shared by modules/sitemap_extractor.py
+# and api/audit-pipeline.py. Vercel sets VERCEL=1 for every deployed function
+# invocation (production AND preview) -- these api/*.py handlers never run
+# anywhere else (plain `next dev` 404s on API calls, see agents.md), so this
+# is effectively always the "prod" branch in real usage; the local branch only
+# matters for direct pytest/module calls that don't set VERCEL. Raised past
+# 200 previously (up to 4000) drove real Vercel CPU-usage overage: each URL in
+# a bulk audit fans out to its own per-URL invocation with several
+# ThreadPoolExecutor-backed site-health checks (WHOIS/DNS/SSL/etc.), so a
+# 4000-URL crawl could spin up thousands of concurrent invocations.
+BULK_URL_CAP_PROD = 200
+BULK_URL_CAP_LOCAL = 5000
+
+
+def bulk_url_cap() -> int:
+    return BULK_URL_CAP_PROD if os.environ.get("VERCEL") else BULK_URL_CAP_LOCAL
 
 
 def send_json(handler, status, data):
