@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ChatWidget } from "@/components/ChatWidget";
 import { useAudit } from "@/lib/state/AuditContext";
 
 interface NavItem {
@@ -208,6 +209,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
+      <ChatWidget />
     </div>
   );
 }

@@ -70,6 +70,17 @@ prior standalone Streamlit SEO audit tool ported in on top.
   `crawl_site(..., run_full_audit=False)`; per-page SEO audits happen via the
   same client orchestrator as the other bulk modes, not inside this endpoint.
 - `api/ai-summary.py`: Groq AI plain-English summary endpoint
+- `api/chat.py`: multi-turn AI chatbot endpoint (`modules/ai_assist.py::chat_with_assistant`),
+  backing the global `components/ChatWidget.tsx` floating widget (rendered in
+  `AppShell.tsx`, so it's on every page). Defaults to app-help Q&A; when the
+  user is on `/results` or `/detail` with results loaded, the widget attaches
+  a small `auditContext` (url/score/top issues, built client-side in
+  `ChatWidget.tsx::buildAuditContext`) so the assistant can answer questions
+  about the actual audit, not just the app. Conversation history is sent back
+  each turn (no server-side session) and bounded on both ends
+  (`_MAX_CHAT_TURNS`/`_MAX_CHAT_CONTEXT_CHARS` in `ai_assist.py`,
+  `MAX_MESSAGES`/`MAX_MESSAGE_CHARS` in `api/chat.py`) since it's a raw
+  per-request Groq call, not a managed session.
 - `api/pagespeed.py`, `api/export.py`, `api/config-status.py`
 - `modules/auditor.py`: core fetch + orchestration, SSRF guard (`validate_audit_url`).
   `audit_url(..., prefetched=None)` accepts an already-fetched page (the shape
@@ -223,10 +234,28 @@ Live-verified end-to-end against `https://www.edstellar.com/sitemap.xml`
 (2,461 URLs), see `tests/test_sitewide_pipeline_live.py` (opt-in,
 `RUN_LIVE_TESTS=1`) and `PROJECT_LOG.md` session history.
 
+## Security headers / CSP
+`proxy.ts` sets a nonce-based Content-Security-Policy per request
+(Next.js's documented pattern: `script-src 'self' 'nonce-<random>'
+'strict-dynamic'`) — **not** a static CSP in `next.config.ts`, because App
+Router's streaming hydration relies on inline `<script>` tags (RSC flight
+data, and the theme-init script in `app/layout.tsx`) that a plain
+`script-src 'self'` blocks outright, silently breaking all client
+interactivity (buttons/toggles render but do nothing, no console error by
+default). `app/layout.tsx` reads the nonce via `next/headers`'s `headers()`
+and passes it to the inline theme script; any other inline `<script>` added
+to the app needs the same treatment or it will be blocked. In dev, the CSP
+also allows `'unsafe-eval'` (React's dev-mode call-stack reconstruction uses
+`eval()`; this is stripped in production via `process.env.NODE_ENV` in
+`proxy.ts`). `next.config.ts` still sets the static headers that don't
+need a nonce (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`,
+`Permissions-Policy`).
+
 ## Env vars
 - `PSI_API_KEY` (optional): PageSpeed Insights quota
-- `GROQ_API_KEY` (optional): server-side default for the AI Summary feature;
-  users can also paste their own key in Settings (stored in browser localStorage only)
+- `GROQ_API_KEY` (optional): server-side default for the AI Summary feature
+  AND the chatbot (`api/chat.py`) — both share the same key; users can also
+  paste their own key in Settings (stored in browser localStorage only)
 
 ## Testing
 ```bash
@@ -254,11 +283,13 @@ Edstellar sitemap/pages and take 30+ seconds. Opt in with `RUN_LIVE_TESTS=1`.
   internal/metadata host is blocked mid-chain) are the guards. `fetch_page`
   uses `safe_get`. Callers that fetch URLs derived from page content or a
   target's robots.txt/sitemap (`link_auditor.validate_url`,
-  `crawler._fetch_sitemap_locs`) call `validate_audit_url` first. Redirect
-  targets in `technical_checks.py` cross-host followers are NOT yet
-  re-validated (they always start from the already-validated audit domain, so
-  lower risk; see PROJECT_LOG Session 10 residuals). Covered by
-  `tests/test_ssrf.py`.
+  `crawler._fetch_sitemap_locs`) call `validate_audit_url` first.
+  `technical_checks.py`'s robots/sitemap/HTTPS-enforcement/canonical-loop/
+  www-redirect checks, `crawler.py`'s sitemap+robots.txt fetches, and
+  `image_auditor.py`'s per-image size-check fetches (page-controlled `<img
+  src>`, previously completely unguarded) all now route through `safe_get`
+  too, closing the redirect-gap and unguarded-fetch findings from the
+  2026-07 security audit (see PROJECT_LOG). Covered by `tests/test_ssrf.py`.
 - **`all_issues` aggregation excludes the legacy `headings` and `images`
   blocks** (`auditor.py`): `heading_detail`/`image_detail` are the thorough
   versions scoring uses, and including both would double-count. If you add a

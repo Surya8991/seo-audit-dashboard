@@ -19,6 +19,84 @@ _GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 _DEFAULT_MODEL = "llama-3.1-8b-instant"
 _MAX_AUDIT_CHARS = 8000
 
+# Chatbot conversation bounds: this is a per-request Groq call (no server-side
+# session), so the client resends the running history each turn. Cap both the
+# number of turns and total size to keep requests small and bound token cost.
+_MAX_CHAT_TURNS = 20
+_MAX_CHAT_CONTEXT_CHARS = 4000
+
+_APP_HELP_SYSTEM_PROMPT = """You are the in-app assistant for the SEO Technical Audit Dashboard.
+Help users understand the app and their SEO audit results. Be concise and direct.
+
+What this app does: audits one or many URLs for technical SEO issues (crawlability,
+on-page, site health) and reports a 0-100 score, a 35-check technical checklist grouped
+into Crawlability / On-Page / Site Health, per-issue severity + fix effort (Easy/Medium/Hard),
+broken links, image SEO, heading structure, mobile-friendliness, and PageSpeed performance.
+
+Key pages: Dashboard (overview), Technical Audit (run a new audit: single URL, sitemap,
+crawl-from-URL, or CSV/paste a URL list), Results (list of audited URLs, filter/sort/export),
+Detail (per-URL drill-down with tabs: Overview, Technical, Issues, Links, Headings,
+Content & Images, Performance, Recommendations), Settings (theme, API keys).
+
+If the user asks something unrelated to this app or to SEO, answer briefly if you can,
+but steer back to what you can help with here. If you don't know a specific detail about
+the app, say so rather than guessing."""
+
+
+def _trim_chat_messages(messages: list[dict]) -> list[dict]:
+    """Keep only the most recent turns, then hard-cap total character budget."""
+    trimmed = messages[-_MAX_CHAT_TURNS:]
+    budget = _MAX_CHAT_CONTEXT_CHARS
+    out = []
+    for msg in reversed(trimmed):
+        content = str(msg.get("content", ""))[:budget]
+        if not content:
+            continue
+        budget -= len(content)
+        out.append({"role": msg.get("role", "user"), "content": content})
+        if budget <= 0:
+            break
+    return list(reversed(out))
+
+
+def chat_with_assistant(messages: list[dict], api_key: str, audit_context: dict | None = None,
+                         model: str = _DEFAULT_MODEL) -> dict:
+    """Multi-turn app-help / audit Q&A chat. `messages` is the running
+    conversation (each `{role: "user"|"assistant", content: str}`), oldest
+    first, NOT including the system prompt (that's added here).
+
+    `audit_context`, when provided, is a small summary of the currently
+    loaded audit (url, seo_score, top issue titles) so the assistant can
+    answer questions about the user's actual results, not just the app.
+
+    Returns {ok, reply, model} or {ok: False, error}.
+    """
+    if not api_key:
+        return {"ok": False, "error": "Groq API key not configured"}
+    if not messages:
+        return {"ok": False, "error": "No message provided"}
+
+    system_msg = _APP_HELP_SYSTEM_PROMPT
+    if audit_context:
+        ctx_url = str(audit_context.get("url") or "")
+        ctx_score = audit_context.get("seo_score")
+        ctx_issues = audit_context.get("top_issues") or []
+        ctx_lines = [f"- {str(i)[:200]}" for i in ctx_issues[:10]]
+        system_msg += (
+            f"\n\nThe user currently has an audit loaded for {ctx_url or 'a URL'} "
+            f"(SEO score: {ctx_score if ctx_score is not None else 'unknown'}/100). "
+            f"Its top issues:\n" + ("\n".join(ctx_lines) if ctx_lines else "(none)")
+        )[:_MAX_CHAT_CONTEXT_CHARS]
+
+    chat_messages = [{"role": "system", "content": system_msg}, *_trim_chat_messages(messages)]
+
+    try:
+        reply = _chat(chat_messages, api_key, model=model, temperature=0.5, max_tokens=500)
+        return {"ok": True, "reply": reply, "model": model}
+    except Exception as exc:
+        logger.warning("chat_with_assistant failed: %s", exc)
+        return {"ok": False, "error": _safe_error(exc)}
+
 
 def _safe_error(exc: Exception) -> str:
     return f"{type(exc).__name__}: {exc}"

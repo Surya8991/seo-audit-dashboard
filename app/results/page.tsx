@@ -53,12 +53,38 @@ function worstIssue(r: AuditResult): string {
   return [...issues].sort((a, b) => (b.impact_score ?? 0) - (a.impact_score ?? 0))[0].issue;
 }
 
+type SortMode = "score-asc" | "score-desc" | "issues-desc" | "alpha";
+
+const SORT_OPTIONS: { value: SortMode; label: string }[] = [
+  { value: "score-asc", label: "Worst score first" },
+  { value: "score-desc", label: "Best score first" },
+  { value: "issues-desc", label: "Most issues first" },
+  { value: "alpha", label: "URL (A–Z)" },
+];
+
+function sortRows(rows: AuditResult[], mode: SortMode): AuditResult[] {
+  const withKey = [...rows];
+  switch (mode) {
+    case "score-desc":
+      return withKey.sort((a, b) => (b.seo_score ?? 0) - (a.seo_score ?? 0));
+    case "issues-desc":
+      return withKey.sort((a, b) => (b.all_issues?.length ?? 0) - (a.all_issues?.length ?? 0));
+    case "alpha":
+      return withKey.sort((a, b) => a.url.localeCompare(b.url));
+    case "score-asc":
+    default:
+      return withKey.sort((a, b) => (a.seo_score ?? 0) - (b.seo_score ?? 0));
+  }
+}
+
 export default function ResultsPage() {
   const { results, navFilter, setNavFilter, setSelectedUrlIndex, clearAll } = useAudit();
   const router = useRouter();
 
   const [scoreMax, setScoreMax] = useState(100);
   const [brokenOnly, setBrokenOnly] = useState(false);
+  const [search, setSearch] = useState("");
+  const [sortMode, setSortMode] = useState<SortMode>("score-asc");
   const [confirmClear, setConfirmClear] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
@@ -72,6 +98,7 @@ export default function ResultsPage() {
   }, [navFilter]);
 
   const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
     return results.filter((r) => {
       if ((r.seo_score ?? 0) > scoreMax) return false;
       if (brokenOnly) {
@@ -79,12 +106,13 @@ export default function ResultsPage() {
         const brokenExt = r.external_links?.broken_count || 0;
         if (brokenInt + brokenExt === 0) return false;
       }
+      if (q && !r.url.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [results, scoreMax, brokenOnly]);
+  }, [results, scoreMax, brokenOnly, search]);
 
   // Group the filtered rows by domain so a sitewide audit reads as one section
-  // per site (worst-scoring domains first, then worst URLs within each).
+  // per site (worst-scoring domains first, then rows ordered by the chosen sort).
   const groups = useMemo(() => {
     const byHost = new Map<string, AuditResult[]>();
     for (const r of filtered) {
@@ -95,11 +123,11 @@ export default function ResultsPage() {
     return [...byHost.entries()]
       .map(([host, rows]) => ({
         host,
-        rows: [...rows].sort((a, b) => (a.seo_score ?? 0) - (b.seo_score ?? 0)),
+        rows: sortRows(rows, sortMode),
         avg: avgScore(rows),
       }))
       .sort((a, b) => a.avg - b.avg);
-  }, [filtered]);
+  }, [filtered, sortMode]);
 
   function openDetail(r: AuditResult) {
     setSelectedUrlIndex(results.indexOf(r));
@@ -195,6 +223,18 @@ export default function ResultsPage() {
 
       <Card className="mb-4">
         <div className="flex flex-wrap items-end gap-6">
+          <div className="min-w-[200px] flex-1">
+            <label className="mb-1 block text-xs font-medium text-[var(--seo-muted)]">
+              Search URL
+            </label>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Filter by path or domain…"
+              className="w-full rounded-lg border border-[var(--seo-border)] bg-[var(--seo-card)] px-3 py-1.5 text-sm text-[var(--seo-text)] placeholder:text-[var(--seo-muted)]"
+            />
+          </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-[var(--seo-muted)]">
               Max score: {scoreMax}
@@ -208,6 +248,20 @@ export default function ResultsPage() {
               className="w-48"
             />
           </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-[var(--seo-muted)]">
+              Sort
+            </label>
+            <select
+              value={sortMode}
+              onChange={(e) => setSortMode(e.target.value as SortMode)}
+              className="rounded-lg border border-[var(--seo-border)] bg-[var(--seo-card)] px-3 py-1.5 text-sm text-[var(--seo-text)]"
+            >
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
           <label className="flex items-center gap-2 text-sm text-[var(--seo-text)]">
             <input
               type="checkbox"
@@ -216,24 +270,27 @@ export default function ResultsPage() {
             />
             Broken links only
           </label>
-          <button
-            type="button"
-            onClick={() => {
-              if (!confirmClear) {
-                setConfirmClear(true);
-                return;
-              }
-              clearAll();
-              setConfirmClear(false);
-            }}
-            className="ml-auto rounded-lg border border-[var(--seo-error-border)] px-3 py-1.5 text-sm font-medium text-[var(--seo-error)] hover:bg-[var(--seo-error-bg)]"
-          >
-            {confirmClear ? "Confirm clear all results?" : "Clear All Results"}
-          </button>
         </div>
       </Card>
 
-      <ExportBar results={results} />
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <ExportBar results={results} />
+        <button
+          type="button"
+          onClick={() => {
+            if (!confirmClear) {
+              setConfirmClear(true);
+              return;
+            }
+            clearAll();
+            setConfirmClear(false);
+          }}
+          onBlur={() => setConfirmClear(false)}
+          className="ml-auto rounded-lg border border-[var(--seo-error-border)] px-3 py-1.5 text-sm font-medium text-[var(--seo-error)] hover:bg-[var(--seo-error-bg)]"
+        >
+          {confirmClear ? "Confirm clear all results?" : "Clear All Results"}
+        </button>
+      </div>
 
       <div className="flex flex-col gap-4">
         {groups.map((g) => {
