@@ -19,12 +19,14 @@ from modules.technical_checks import analyze_domain_health  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
-# Discovery-only cap. Kept lower than the sitemap/CSV modes' cap (2000):
-# unlike a sitemap fetch (one XML download), BFS crawl discovery does a real
-# HTTP GET per page just to extract links, so this bounds the discovery
-# request itself to the Vercel maxDuration window, not just the audit phase.
+# Discovery-only cap, raised to match the sitemap/CSV modes' cap per explicit
+# request. Unlike a sitemap fetch (one XML download), BFS crawl discovery does
+# a real HTTP GET per page just to extract links, all within this one
+# synchronous request/invocation (not chunked the way per-URL audits are) —
+# a crawl anywhere near this cap risks exceeding Vercel's maxDuration window.
+# Known risk, not a verified-safe value; lower it if crawls start timing out.
 DEFAULT_MAX_PAGES = 50
-MAX_MAX_PAGES = 200
+MAX_MAX_PAGES = 4000
 
 
 def _handle_audit(handler, payload):
@@ -131,7 +133,7 @@ def _handle_crawl(handler, payload):
                 max_workers=4,
                 # Discovery only: the browser fans out per-page audits itself
                 # via lib/crawl/orchestrator.ts, so this stays fast and safely
-                # under the Vercel maxDuration cap even for max_pages=200.
+                # under the Vercel maxDuration cap even at MAX_MAX_PAGES.
                 run_full_audit=False,
             )
         except ValueError as e:

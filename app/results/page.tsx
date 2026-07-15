@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAudit } from "@/lib/state/AuditContext";
 import { Card, EmptyState, PageHeader, ScoreBadge, ScoreCircle, StatusPill } from "@/components/ui";
@@ -28,6 +28,16 @@ function pathnameOf(url: string): string {
   }
 }
 
+/** First path segment of a URL, used to group results by site section
+ * (matching how a sitemap.xml is typically organized by directory, e.g.
+ * /blog/*, /course/*, /tag/*), so a sitewide audit reads as one section per
+ * part of the site instead of one flat list. */
+function sectionOf(url: string): string {
+  const path = pathnameOf(url);
+  const segment = path.split("/").filter(Boolean)[0];
+  return segment || "(root)";
+}
+
 /** Compact Easy/Medium/Hard fix-effort counts for a result's issues. */
 function EffortChips({ result }: { result: AuditResult }) {
   const b = difficultyBreakdown(result.all_issues || []);
@@ -46,6 +56,48 @@ function EffortChips({ result }: { result: AuditResult }) {
       {chip(b.Medium, "med", "var(--seo-warning)")}
       {chip(b.Hard, "hard", "var(--seo-error)")}
     </span>
+  );
+}
+
+/** One result row, shared between the flat and section-grouped table bodies. */
+function ResultRow({ r, onOpen }: { r: AuditResult; onOpen: (r: AuditResult) => void }) {
+  const cl = r.technical_audit_checklist?.summary;
+  const top = worstIssue(r);
+  return (
+    <tr
+      onClick={() => onOpen(r)}
+      className="cursor-pointer border-b border-[var(--table-row-border)] last:border-0 hover:bg-[var(--table-row-hover)]"
+    >
+      <td className="max-w-xs truncate px-4 py-3 font-medium text-[var(--seo-subheading)]">
+        {pathnameOf(r.url)}
+        {r.status_code && r.status_code !== 200 ? (
+          <span className="ml-2 text-xs text-[var(--seo-error)]">{r.status_code}</span>
+        ) : null}
+      </td>
+      <td className="px-4 py-3">
+        <ScoreBadge score={r.seo_score ?? 0} />
+      </td>
+      <td className="px-4 py-3">
+        {cl ? (
+          <span className="flex items-center gap-1.5 text-xs">
+            <StatusPill status="pass" /> {cl.pass}
+            <StatusPill status="warning" /> {cl.warning}
+            <StatusPill status="fail" /> {cl.fail}
+          </span>
+        ) : (
+          <span className="text-xs text-[var(--seo-muted)]">N/A</span>
+        )}
+      </td>
+      <td className="px-4 py-3">
+        <EffortChips result={r} />
+      </td>
+      <td className="max-w-xs truncate px-4 py-3 text-[var(--seo-text-light)]">
+        {top || <span className="text-[var(--seo-success)]">No issues</span>}
+      </td>
+      <td className="px-4 py-3 text-right">
+        <span className="text-sm font-medium text-[var(--seo-accent)]">View →</span>
+      </td>
+    </tr>
   );
 }
 
@@ -89,7 +141,10 @@ export default function ResultsPage() {
   const [sortMode, setSortMode] = useState<SortMode>("score-asc");
   const [confirmClear, setConfirmClear] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [h1ReportOpen, setH1ReportOpen] = useState(false);
+  const [sectionFilter, setSectionFilter] = useState("all");
+  const [checklistFilter, setChecklistFilter] = useState<"all" | "has-fail" | "has-warning">("all");
 
   useEffect(() => {
     if (!navFilter) return;
@@ -99,6 +154,11 @@ export default function ResultsPage() {
     setNavFilter(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navFilter]);
+
+  // Every distinct first-path-segment across all results, for the Section filter.
+  const sections = useMemo(() => {
+    return [...new Set(results.map((r) => sectionOf(r.url)))].sort();
+  }, [results]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -110,12 +170,18 @@ export default function ResultsPage() {
         if (brokenInt + brokenExt === 0) return false;
       }
       if (q && !r.url.toLowerCase().includes(q)) return false;
+      if (sectionFilter !== "all" && sectionOf(r.url) !== sectionFilter) return false;
+      const cl = r.technical_audit_checklist?.summary;
+      if (checklistFilter === "has-fail" && !(cl && cl.fail > 0)) return false;
+      if (checklistFilter === "has-warning" && !(cl && cl.warning > 0)) return false;
       return true;
     });
-  }, [results, scoreMax, brokenOnly, search]);
+  }, [results, scoreMax, brokenOnly, search, sectionFilter, checklistFilter]);
 
-  // Group the filtered rows by domain so a sitewide audit reads as one section
-  // per site (worst-scoring domains first, then rows ordered by the chosen sort).
+  // Group the filtered rows by domain (one card per site), then by site
+  // section (first path segment, e.g. /blog/, /course/, /tag/) so a sitewide
+  // audit reads in the same hierarchy a sitemap.xml is usually organized by,
+  // instead of one flat alphabetical/score-sorted list.
   const groups = useMemo(() => {
     const byHost = new Map<string, AuditResult[]>();
     for (const r of filtered) {
@@ -124,11 +190,26 @@ export default function ResultsPage() {
       byHost.get(h)!.push(r);
     }
     return [...byHost.entries()]
-      .map(([host, rows]) => ({
-        host,
-        rows: sortRows(rows, sortMode),
-        avg: avgScore(rows),
-      }))
+      .map(([host, rows]) => {
+        const bySection = new Map<string, AuditResult[]>();
+        for (const r of rows) {
+          const s = sectionOf(r.url);
+          if (!bySection.has(s)) bySection.set(s, []);
+          bySection.get(s)!.push(r);
+        }
+        const sectionGroups = [...bySection.entries()]
+          .map(([section, sectionRows]) => ({
+            section,
+            rows: sortRows(sectionRows, sortMode),
+          }))
+          .sort((a, b) => a.section.localeCompare(b.section));
+        return {
+          host,
+          rows: sortRows(rows, sortMode),
+          sectionGroups,
+          avg: avgScore(rows),
+        };
+      })
       .sort((a, b) => a.avg - b.avg);
   }, [filtered, sortMode]);
 
@@ -332,6 +413,37 @@ export default function ResultsPage() {
               ))}
             </select>
           </div>
+          {sections.length > 1 ? (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-[var(--seo-muted)]">
+                Section
+              </label>
+              <select
+                value={sectionFilter}
+                onChange={(e) => setSectionFilter(e.target.value)}
+                className="rounded-lg border border-[var(--seo-border)] bg-[var(--seo-card)] px-3 py-1.5 text-sm text-[var(--seo-text)]"
+              >
+                <option value="all">All sections</option>
+                {sections.map((s) => (
+                  <option key={s} value={s}>/{s}</option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-[var(--seo-muted)]">
+              Checklist
+            </label>
+            <select
+              value={checklistFilter}
+              onChange={(e) => setChecklistFilter(e.target.value as typeof checklistFilter)}
+              className="rounded-lg border border-[var(--seo-border)] bg-[var(--seo-card)] px-3 py-1.5 text-sm text-[var(--seo-text)]"
+            >
+              <option value="all">All checklist results</option>
+              <option value="has-fail">Has failures</option>
+              <option value="has-warning">Has warnings</option>
+            </select>
+          </div>
           <label className="flex items-center gap-2 text-sm text-[var(--seo-text)]">
             <input
               type="checkbox"
@@ -381,47 +493,30 @@ export default function ResultsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {g.rows.map((r, idx) => {
-                        const cl = r.technical_audit_checklist?.summary;
-                        const top = worstIssue(r);
-                        return (
-                          <tr
-                            key={r.url + idx}
-                            onClick={() => openDetail(r)}
-                            className="cursor-pointer border-b border-[var(--table-row-border)] last:border-0 hover:bg-[var(--table-row-hover)]"
-                          >
-                            <td className="max-w-xs truncate px-4 py-3 font-medium text-[var(--seo-subheading)]">
-                              {pathnameOf(r.url)}
-                              {r.status_code && r.status_code !== 200 ? (
-                                <span className="ml-2 text-xs text-[var(--seo-error)]">{r.status_code}</span>
-                              ) : null}
-                            </td>
-                            <td className="px-4 py-3">
-                              <ScoreBadge score={r.seo_score ?? 0} />
-                            </td>
-                            <td className="px-4 py-3">
-                              {cl ? (
-                                <span className="flex items-center gap-1.5 text-xs">
-                                  <StatusPill status="pass" /> {cl.pass}
-                                  <StatusPill status="warning" /> {cl.warning}
-                                  <StatusPill status="fail" /> {cl.fail}
-                                </span>
-                              ) : (
-                                <span className="text-xs text-[var(--seo-muted)]">N/A</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              <EffortChips result={r} />
-                            </td>
-                            <td className="max-w-xs truncate px-4 py-3 text-[var(--seo-text-light)]">
-                              {top || <span className="text-[var(--seo-success)]">No issues</span>}
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <span className="text-sm font-medium text-[var(--seo-accent)]">View →</span>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {g.sectionGroups.length > 1
+                        ? g.sectionGroups.map((sg) => {
+                            const sectionKey = `${g.host}/${sg.section}`;
+                            const sectionCollapsed = collapsedSections[sectionKey];
+                            return (
+                              <Fragment key={sg.section}>
+                                <tr
+                                  onClick={() =>
+                                    setCollapsedSections((c) => ({ ...c, [sectionKey]: !c[sectionKey] }))
+                                  }
+                                  className="cursor-pointer border-b border-[var(--seo-border)] bg-[var(--seo-card-alt)]"
+                                >
+                                  <td colSpan={6} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">
+                                    <span className={`mr-1.5 inline-block transition-transform ${sectionCollapsed ? "" : "rotate-90"}`}>▸</span>
+                                    /{sg.section} ({sg.rows.length})
+                                  </td>
+                                </tr>
+                                {!sectionCollapsed
+                                  ? sg.rows.map((r, idx) => <ResultRow key={r.url + idx} r={r} onOpen={openDetail} />)
+                                  : null}
+                              </Fragment>
+                            );
+                          })
+                        : g.rows.map((r, idx) => <ResultRow key={r.url + idx} r={r} onOpen={openDetail} />)}
                     </tbody>
                   </table>
                 </div>

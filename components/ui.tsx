@@ -2,11 +2,60 @@ import { useState, type CSSProperties, type ReactNode } from "react";
 import { scoreColor, severityColor } from "@/lib/format";
 import type { Issue } from "@/lib/types";
 import { fixDifficulty, type Difficulty } from "@/lib/difficulty";
-import { explainCommonIssue } from "@/lib/commonIssuesKB";
+import { explainCommonIssue, type CommonIssueExplanation } from "@/lib/commonIssuesKB";
 import { detectFixTarget, type FixPageContext, type FixSuggestion } from "@/lib/fixSuggestable";
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <div className={`card p-5 ${className}`}>{children}</div>;
+}
+
+/** Shared popup/modal: click-to-expand result cards across Issues, Links,
+ * Headings, Performance, and Recommendations all open the same overlay
+ * instead of each tab reinventing its own expand pattern. */
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title?: string;
+  children: ReactNode;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Close"
+        className="absolute inset-0 bg-black/50"
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="card relative z-10 max-h-[85vh] w-full max-w-2xl overflow-y-auto p-5 shadow-xl"
+      >
+        <div className="mb-3 flex items-start justify-between gap-3">
+          {title ? (
+            <h3 className="text-base font-semibold text-[var(--seo-heading)]">{title}</h3>
+          ) : (
+            <span />
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="shrink-0 rounded-lg p-1 text-[var(--seo-muted)] hover:bg-[var(--seo-card-hover)]"
+          >
+            ✕
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
 }
 
 /** Shared tab-bar row (was copy-pasted byte-for-byte across LinksView,
@@ -23,14 +72,14 @@ export function TabBar<T extends string>({
   onChange: (tab: T) => void;
 }) {
   return (
-    <div className="mb-4 flex flex-wrap gap-1 border-b border-[var(--seo-border)]">
+    <div className="mb-4 flex flex-wrap gap-1 rounded-lg bg-[var(--seo-card-alt)] p-1">
       {tabs.map((t) => (
         <button
           key={t}
           onClick={() => onChange(t)}
-          className={`rounded-t-lg px-3 py-2 text-sm font-medium ${
+          className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
             active === t
-              ? "border-b-2 border-[var(--seo-accent)] text-[var(--seo-accent)]"
+              ? "bg-[var(--seo-card-bg)] text-[var(--seo-accent)] shadow-sm"
               : "text-[var(--seo-text-light)] hover:text-[var(--seo-subheading)]"
           }`}
         >
@@ -143,10 +192,11 @@ export function DifficultyBadge({ difficulty }: { difficulty: Difficulty }) {
 /**
  * `pageContext`/`groqApiKey` are optional: only the Detail page (which has a
  * single concrete AuditResult in scope) passes them, enabling the
- * "✨ Suggest a fix" action for issues detectFixTarget() recognizes
- * (metadata/H1 issues with a well-defined, draftable replacement). Callers
- * without page context (e.g. any future sitewide/aggregated issue list) just
- * don't render it — there's no single page to draft a fix for.
+ * "✨ Suggest a fix" action inside the Modal for issues detectFixTarget()
+ * recognizes (metadata/H1 issues with a well-defined, draftable
+ * replacement). Callers without page context (e.g. any future
+ * sitewide/aggregated issue list) just don't render it — there's no single
+ * page to draft a fix for.
  */
 export function IssueRow({
   issue,
@@ -157,46 +207,48 @@ export function IssueRow({
   pageContext?: FixPageContext;
   groqApiKey?: string;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [open, setOpen] = useState(false);
   const explanation = explainCommonIssue(issue);
   const fixTarget = pageContext ? detectFixTarget(issue.issue) : null;
 
   return (
-    <div className="border-b border-[var(--seo-border)] py-3 last:border-0">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <SeverityBadge severity={issue.severity} />
-            <DifficultyBadge difficulty={fixDifficulty(issue)} />
-            <span className="text-xs text-[var(--seo-muted)]">{issue.category}</span>
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="block w-full border-b border-[var(--seo-border)] py-3 text-left transition-colors last:border-0 hover:bg-[var(--seo-card-hover)]"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <SeverityBadge severity={issue.severity} />
+              <DifficultyBadge difficulty={fixDifficulty(issue)} />
+              <span className="text-xs text-[var(--seo-muted)]">{issue.category}</span>
+            </div>
+            <div className="mt-1 text-sm font-medium text-[var(--seo-subheading)]">
+              {issue.issue}
+            </div>
+            <div className="mt-0.5 text-xs text-[var(--seo-text-light)]">
+              {issue.recommendation}
+            </div>
+            <span className="mt-1 inline-block text-xs font-medium text-[var(--seo-accent)]">
+              View details & fix →
+            </span>
           </div>
-          <div className="mt-1 text-sm font-medium text-[var(--seo-subheading)]">
-            {issue.issue}
-          </div>
-          <div className="mt-0.5 text-xs text-[var(--seo-text-light)]">
-            {issue.recommendation}
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-3">
-            {explanation ? (
-              <button
-                type="button"
-                onClick={() => setExpanded((v) => !v)}
-                className="text-xs font-medium text-[var(--seo-accent)] hover:underline"
-              >
-                {expanded ? "Hide details" : "Learn more →"}
-              </button>
-            ) : null}
-          </div>
+          <span className="shrink-0 text-xs text-[var(--seo-muted)]">
+            Impact {issue.impact_score}
+          </span>
+        </div>
+      </button>
+      <Modal open={open} onClose={() => setOpen(false)} title={issue.issue}>
+        <div className="flex flex-col gap-4">
+          <CommonIssueDetail explanation={explanation} />
           {fixTarget && pageContext ? (
             <FixSuggestionButton issue={issue} pageContext={pageContext} apiKey={groqApiKey} />
           ) : null}
         </div>
-        <span className="shrink-0 text-xs text-[var(--seo-muted)]">
-          Impact {issue.impact_score}
-        </span>
-      </div>
-      {expanded && explanation ? <CommonIssueDetail explanation={explanation} /> : null}
-    </div>
+      </Modal>
+    </>
   );
 }
 
@@ -270,7 +322,7 @@ function FixSuggestionButton({
   );
 }
 
-function CommonIssueDetail({ explanation }: { explanation: NonNullable<ReturnType<typeof explainCommonIssue>> }) {
+function CommonIssueDetail({ explanation }: { explanation: CommonIssueExplanation }) {
   return (
     <div className="mt-3 grid grid-cols-1 gap-3 rounded-lg bg-[var(--seo-card-hover)] p-3 sm:grid-cols-2">
       <div>
@@ -374,6 +426,22 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
       <div className="text-lg font-semibold text-[var(--seo-heading)]">{title}</div>
       {hint ? <div className="mt-1 text-sm text-[var(--seo-muted)]">{hint}</div> : null}
     </Card>
+  );
+}
+
+/** Always-visible "how to use this" note, placed directly under the section
+ * it explains. Replaces the old click-to-open HelpDialog popover pattern:
+ * the explanation is part of the page, not hidden behind an (i) icon. */
+export function HelpSection({ title, children }: { title?: string; children: ReactNode }) {
+  return (
+    <div className="mt-2 rounded-lg border border-[var(--seo-border)] bg-[var(--seo-card-alt)] px-3 py-2">
+      {title ? (
+        <div className="mb-0.5 text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">
+          How to use: {title}
+        </div>
+      ) : null}
+      <p className="text-xs leading-relaxed text-[var(--seo-text-light)]">{children}</p>
+    </div>
   );
 }
 

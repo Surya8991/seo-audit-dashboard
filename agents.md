@@ -59,10 +59,14 @@ prior standalone Streamlit SEO audit tool ported in on top.
   SEO impact / user impact / recommended fix, and a `source` citation for
   facts that change over time (Core Web Vitals thresholds, mobile-first
   indexing) grounded in a 2026 web search (Google Search Central, web.dev).
-  Wired into `IssueRow` (`components/ui.tsx`) as an inline "Learn more →"
-  expansion, shown only when a KB entry matches; NOT exhaustive coverage of
-  every possible issue string by design. Guarded by
-  `lib/commonIssuesKB.test.ts`.
+  `explainCommonIssue` never returns `null` — an issue with no curated match
+  falls back to a generic explanation built from the issue's own
+  `category`/`severity`/`recommendation` fields, so every issue has
+  *something* to show. Wired into `IssueRow` (`components/ui.tsx`): clicking
+  an issue row opens a `Modal` (via `HelpSection`'s modal pattern) showing
+  `CommonIssueDetail` (the KB/fallback explanation) plus `FixSuggestionButton`
+  when `lib/fixSuggestable.ts::detectFixTarget` matches — NOT an inline
+  expand-in-place panel. Guarded by `lib/commonIssuesKB.test.ts`.
 - **API routes are consolidated into 3 files, dispatched by an `"action"`
   field in the request** (`api/audit-pipeline.py`, `api/ai.py`, plus
   standalone `api/export.py`) — **not** one file per endpoint. This used to
@@ -237,9 +241,13 @@ prior standalone Streamlit SEO audit tool ported in on top.
   all 35 checks in one `audit_url()` call regardless of selection, since
   they're bundled into a single page fetch and skipping individual checks
   server-side wouldn't meaningfully speed anything up.
-- `components/HelpDialog.tsx`: reusable "ⓘ" icon button that opens a small
-  plain-English explanation popover; used on each Technical Audit input-mode
-  card and each checklist group (Crawlability/On-Page/Site Health).
+- `components/ui.tsx::HelpSection`: reusable "ⓘ" icon button that opens a
+  shared `Modal` (`components/ui.tsx::Modal`) with a plain-English
+  explanation; used on each Technical Audit input-mode card, each checklist
+  group (Crawlability/On-Page/Site Health), and (via the same `Modal`)
+  `IssueRow`'s issue detail (see Common Issues KB note above). Supersedes the
+  old standalone `components/HelpDialog.tsx` popover (deleted — folded into
+  this shared Modal pattern, merged in from `venkataramana-work`).
 - `components/ChecklistExplainer.tsx`: the "What Technical SEO checks" card
   (all 35 checks as pills + a "when to use" note), mirroring the reference
   tool's use-case explainer. Rendered on `app/technical-audit/page.tsx` below
@@ -313,8 +321,12 @@ neither model ports here as-is):
 1. One of three URL-resolution steps runs first, each bounded and fast enough
    to fit in a single invocation: `api/audit-pipeline.py`'s "sitemap" action (sitemap/sitemap-index
    fetch, cap 4000, `MAX_URL_CAP` in `modules/sitemap_extractor.py`),
-   `api/audit-pipeline.py`'s "crawl" action (BFS link discovery, `run_full_audit=False`, cap 200; lower
-   than sitemap's because discovery itself does a real per-page fetch), or
+   `api/audit-pipeline.py`'s "crawl" action (BFS link discovery,
+   `run_full_audit=False`, cap raised to 4000 to match sitemap/CSV — see
+   `MAX_MAX_PAGES` in `api/audit-pipeline.py`, a known-risk value since crawl
+   discovery does a real per-page fetch unlike a sitemap's one XML download;
+   not yet verified safe against the 90s `maxDuration`, lower it if crawls
+   start timing out), or
    the client-side CSV/paste parser (no network call, cap 4000, `MAX_LIMIT`
    in `app/technical-audit/page.tsx`).
 2. `lib/crawl/chunkedRunner.ts::runChunked` splits the resolved list into
@@ -512,6 +524,11 @@ Edstellar sitemap/pages and take 30+ seconds. Opt in with `RUN_LIVE_TESTS=1`.
   per-page auditing are deliberately two separate steps here (discovery in
   `api/audit-pipeline.py`'s "crawl" action, auditing via the browser's `lib/crawl/orchestrator.ts`),
   unlike the `venkataramana-work` branch's own single-endpoint design.
+- `modules/heading_auditor.py`'s heading tree now excludes `<nav>`,
+  `<header>`, `<footer>`, and `<aside>` elements (a bug fix merged from
+  `venkataramana-work`: boilerplate headings inside nav/site-chrome were
+  previously counted as page content headings, skewing the H1/hierarchy
+  checks). Covered by `tests/test_heading_auditor.py`.
 - The `venkataramana-work` branch (`git fetch origin venkataramana-work`) has
   a `phases.md` with a fuller crawl-feature roadmap (async job queue +
   SQLite/Postgres persistence, resumable `crawl_step`, optional Playwright JS

@@ -3,14 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useAudit } from "@/lib/state/AuditContext";
-import { Card, DifficultyBadge, EmptyState, IssueRow, PageHeader, ScoreBadge, StatusPill, TabBar } from "@/components/ui";
+import { Card, DifficultyBadge, EmptyState, HelpSection, IssueRow, PageHeader, ScoreBadge, StatusPill, TabBar } from "@/components/ui";
 import { difficultyBreakdown } from "@/lib/difficulty";
 import { getThematicIssues, getTopIssuesByImpact } from "@/lib/aggregate";
 import { WEIGHTS } from "@/lib/scoring";
 import { scoreColor } from "@/lib/format";
 import type { ChecklistItem } from "@/lib/types";
 import { CHECK_DEFS, GROUP_HELP, GROUP_LABELS } from "@/lib/checklistDefs";
-import { HelpDialog } from "@/components/HelpDialog";
 import { useSelectedChecks } from "@/lib/useSelectedChecks";
 import { LinksView } from "@/components/detail/LinksView";
 import { HeadingsView } from "@/components/detail/HeadingsView";
@@ -27,7 +26,7 @@ const TABS = [
   "Issues",
   "Links",
   "Headings",
-  "Content & Images",
+  "Content",
   "Performance",
 ] as const;
 type Tab = (typeof TABS)[number];
@@ -45,13 +44,11 @@ function ChecklistGroupCard({
 }) {
   return (
     <Card>
-      <div className="mb-3 flex items-center gap-2">
-        <h3 className="text-sm font-semibold text-[var(--seo-subheading)]">
-          {GROUP_LABELS[group]} ({items.length})
-        </h3>
-        <HelpDialog title={GROUP_LABELS[group]}>{GROUP_HELP[group]}</HelpDialog>
-      </div>
-      <div className="flex flex-col">
+      <h3 className="mb-1 text-sm font-semibold text-[var(--seo-subheading)]">
+        {GROUP_LABELS[group]} ({items.length})
+      </h3>
+      <HelpSection>{GROUP_HELP[group]}</HelpSection>
+      <div className="mt-3 flex flex-col">
         {items.map((item) => (
           <div
             key={item.id}
@@ -147,6 +144,7 @@ function KeyValueGrid({ data }: { data: Record<string, unknown> }) {
 export default function DetailPage() {
   const { results, selectedUrlIndex, setSelectedUrlIndex, groqApiKey } = useAudit();
   const [tab, setTab] = useState<Tab>("Overview");
+  const [urlCopied, setUrlCopied] = useState(false);
   const { selected: selectedChecks } = useSelectedChecks();
 
   if (results.length === 0) {
@@ -184,12 +182,12 @@ export default function DetailPage() {
       </Link>
       <PageHeader title="🔎 URL Detail" subtitle={r.url} />
 
-      {results.length > 1 ? (
-        <div className="mb-4">
+      <div className="mb-4 flex items-center gap-2">
+        {results.length > 1 ? (
           <select
             value={idx}
             onChange={(e) => setSelectedUrlIndex(Number(e.target.value))}
-            className="rounded-lg border border-[var(--seo-border-strong)] bg-[var(--seo-card-bg)] px-3 py-2 text-sm text-[var(--seo-text)]"
+            className="min-w-0 flex-1 rounded-lg border border-[var(--seo-border-strong)] bg-[var(--seo-card-bg)] px-3 py-2 text-sm text-[var(--seo-text)]"
           >
             {results.map((res, i) => (
               <option key={res.url} value={i}>
@@ -197,8 +195,24 @@ export default function DetailPage() {
               </option>
             ))}
           </select>
-        </div>
-      ) : null}
+        ) : (
+          <div className="min-w-0 flex-1 truncate rounded-lg border border-[var(--seo-border-strong)] bg-[var(--seo-card-bg)] px-3 py-2 text-sm text-[var(--seo-text)]">
+            {r.url}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            navigator.clipboard.writeText(r.url).then(() => {
+              setUrlCopied(true);
+              setTimeout(() => setUrlCopied(false), 1500);
+            });
+          }}
+          className="shrink-0 rounded-lg border border-[var(--seo-border-strong)] px-3 py-2 text-sm font-medium text-[var(--seo-subheading)] hover:bg-[var(--seo-card-hover)]"
+        >
+          {urlCopied ? "Copied ✓" : "Copy"}
+        </button>
+      </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <ScoreBadge score={r.seo_score ?? 0} />
@@ -645,7 +659,7 @@ export default function DetailPage() {
 
       {tab === "Headings" ? <HeadingsView result={r} /> : null}
 
-      {tab === "Content & Images" ? (
+      {tab === "Content" ? (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card>
             <h3 className="mb-3 text-sm font-semibold text-[var(--seo-subheading)]">Content</h3>
@@ -687,19 +701,6 @@ export default function DetailPage() {
                 No intro/conclusion paragraph text captured for this page.
               </p>
             )}
-          </Card>
-          <Card>
-            <h3 className="mb-3 text-sm font-semibold text-[var(--seo-subheading)]">
-              Images
-            </h3>
-            <KeyValueGrid data={r.image_detail?.summary || r.image_detail || {}} />
-            <button
-              type="button"
-              onClick={() => setTab("Performance")}
-              className="mt-2 text-xs font-medium text-[var(--seo-accent)] hover:underline"
-            >
-              View full image SEO audit → Performance tab
-            </button>
           </Card>
         </div>
       ) : null}

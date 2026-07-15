@@ -236,8 +236,17 @@ const KB: KBEntry[] = [
   },
 ];
 
-/** Look up a researched explanation for a common issue, by matching its title. Returns null if no entry matches (not every possible issue is covered). */
-export function explainCommonIssue(issue: { issue: string }): CommonIssueExplanation | null {
+/** Look up a researched explanation for a common issue, by matching its title.
+ * Falls back to a generic explanation built from the issue's own fields
+ * (category/severity/recommendation) when no curated entry matches, so every
+ * issue can offer a "Learn more" popup, not just the ~20 curated ones. */
+export function explainCommonIssue(issue: {
+  issue: string;
+  category?: string;
+  severity?: string;
+  recommendation?: string;
+  impact_score?: number;
+}): CommonIssueExplanation {
   const title = issue.issue || "";
   for (const entry of KB) {
     if (entry.match.test(title)) {
@@ -251,5 +260,15 @@ export function explainCommonIssue(issue: { issue: string }): CommonIssueExplana
       };
     }
   }
-  return null;
+  const category = issue.category || "this area";
+  const severity = (issue.severity || "").toLowerCase();
+  return {
+    whatIsIt: `${title || "This check"} was flagged under ${category}.`,
+    whyItMatters: severity
+      ? `It's rated ${severity} severity, so it's worth understanding rather than skipping.`
+      : "It affects how this page is evaluated as part of the overall audit.",
+    seoImpact: `Issues in the ${category} category can affect how search engines crawl, index, or rank this page.`,
+    userImpact: "May also affect how visitors experience or trust this page, depending on the specific issue.",
+    recommendedFix: issue.recommendation || "Review the flagged item and address it based on the recommendation above.",
+  };
 }
