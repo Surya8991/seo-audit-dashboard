@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import sys
 from http.server import BaseHTTPRequestHandler
@@ -6,6 +7,8 @@ from http.server import BaseHTTPRequestHandler
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from modules.ai_assist import explain_audit  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 
 def _send_json(handler, status, data):
@@ -32,5 +35,6 @@ class handler(BaseHTTPRequestHandler):
             summary = explain_audit(all_issues, seo_score, api_key, url=url)
             status = 200 if summary.get("ok") else 400
             _send_json(self, status, summary)
-        except Exception as e:  # noqa: BLE001
-            _send_json(self, 500, {"ok": False, "error": str(e)})
+        except Exception:  # noqa: BLE001
+            logger.exception("ai-summary.py request failed")
+            _send_json(self, 500, {"ok": False, "error": "Internal error while generating the summary."})

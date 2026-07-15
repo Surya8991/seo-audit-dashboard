@@ -14,6 +14,8 @@ try:
 except ImportError:
     REQUESTS_AVAILABLE = False
 
+from modules.auditor import validate_audit_url, BlockedURLError
+
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -154,17 +156,38 @@ def _fetch_size(url, referer=None):
         except _r.exceptions.SSLError:
             return method(*args, **kwargs, verify=False)
 
+    def _safe_fetch(method, target_url, *, max_redirects=5, **kwargs):
+        """SSRF-safe fetch: re-validates the URL and every redirect hop with
+        `validate_audit_url` before requesting it, mirroring
+        `auditor.safe_get` but supporting arbitrary methods (HEAD included)
+        since image size-checking needs HEAD as its fast path."""
+        kwargs["allow_redirects"] = False
+        current = target_url
+        history = []
+        for _ in range(max_redirects + 1):
+            ok, msg = validate_audit_url(current)
+            if not ok:
+                raise BlockedURLError(msg)
+            resp = _get(method, current, **kwargs)
+            if resp.is_redirect and resp.headers.get("Location"):
+                history.append(resp)
+                current = urljoin(current, resp.headers["Location"])
+                continue
+            resp.history = history
+            return resp
+        raise requests.TooManyRedirects(f"Exceeded {max_redirects} redirects")
+
     try:
         # ── 1. HEAD ───────────────────────────────────────────────────────
-        r = _get(requests.head, url, timeout=10, allow_redirects=True, headers=hdrs)
+        r = _safe_fetch(requests.head, url, timeout=10, headers=hdrs)
         if r.status_code < 400:
             sz = _cl(r.headers)
             if sz:
                 return url, sz, {"reachable": True, "status_code": r.status_code, "error": None}
 
         # ── 2. Range GET ──────────────────────────────────────────────────
-        r2 = _get(requests.get, url, timeout=10, allow_redirects=True,
-                  headers={**hdrs, "Range": "bytes=0-1"}, stream=True)
+        r2 = _safe_fetch(requests.get, url, timeout=10,
+                         headers={**hdrs, "Range": "bytes=0-1"}, stream=True)
         r2.close()
         if r2.status_code in (200, 206):
             status2 = {"reachable": True, "status_code": r2.status_code, "error": None}
@@ -178,8 +201,7 @@ def _fetch_size(url, referer=None):
                 return url, sz, status2
 
         # ── 3. Streaming GET (headers only, no body) ──────────────────────
-        r3 = _get(requests.get, url, timeout=10, allow_redirects=True,
-                  headers=hdrs, stream=True)
+        r3 = _safe_fetch(requests.get, url, timeout=10, headers=hdrs, stream=True)
         r3.close()
         # Use the LAST attempted status code for reachability: a 200 here
         # means the image is fine even if size couldn't be determined; a 4xx/5xx

@@ -98,7 +98,14 @@ export async function runChunked(
         completed++;
         if (r.fetch_error) failed++;
         else succeeded++;
-        remaining = remaining.filter((u) => u !== r.url);
+        // Remove only the one completed occurrence, not every occurrence of
+        // this URL: `remaining.filter((u) => u !== r.url)` would silently
+        // drop all duplicates from the checkpoint if the resolved URL list
+        // ever contained one (defense-in-depth; today's URL sources dedupe).
+        const dupIdx = remaining.indexOf(r.url);
+        if (dupIdx !== -1) {
+          remaining = [...remaining.slice(0, dupIdx), ...remaining.slice(dupIdx + 1)];
+        }
         callbacks.onResult?.(r);
         callbacks.onProgress?.({
           total, completed, succeeded, failed, inFlight: 0, lastUrl: r.url,

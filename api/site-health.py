@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import sys
 from http.server import BaseHTTPRequestHandler
@@ -7,6 +8,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from modules.auditor import validate_audit_url  # noqa: E402
 from modules.technical_checks import analyze_domain_health  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 
 def _send_json(handler, status, data):
@@ -41,5 +44,6 @@ class handler(BaseHTTPRequestHandler):
                 return
 
             _send_json(self, 200, {"url": url, "domain_health": analyze_domain_health(url)})
-        except Exception as e:  # noqa: BLE001
-            _send_json(self, 500, {"error": str(e)})
+        except Exception:  # noqa: BLE001
+            logger.exception("site-health.py request failed")
+            _send_json(self, 500, {"error": "Internal error while checking site health."})

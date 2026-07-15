@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from modules.auditor import HEADERS, TIMEOUT, validate_audit_url
+from modules.auditor import HEADERS, TIMEOUT, safe_get, validate_audit_url
 
 logger = logging.getLogger(__name__)
 
@@ -44,19 +44,13 @@ class SitemapError(Exception):
 
 
 def _fetch(url: str) -> bytes:
-    """Fetch a sitemap URL (SSRF-validated), transparently gunzipping if needed."""
-    ok, msg = validate_audit_url(url)
-    if not ok:
-        raise SitemapError(f"Blocked URL: {msg}")
+    """Fetch a sitemap URL, re-validating before the initial request and every
+    redirect hop (`safe_get`), so an unvalidated host is never contacted at
+    all, not just excluded from the returned content after the fact."""
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT, verify=True, allow_redirects=True)
+        resp = safe_get(url, headers=HEADERS, timeout=TIMEOUT, verify=True)
     except (requests.RequestException, OSError) as exc:
         raise SitemapError(f"Fetch failed: {exc}") from exc
-
-    # Re-validate the final URL after any redirects (SSRF via redirect).
-    ok, msg = validate_audit_url(resp.url)
-    if not ok:
-        raise SitemapError(f"Blocked redirect target: {msg}")
 
     if resp.status_code != 200:
         raise SitemapError(f"HTTP {resp.status_code}")

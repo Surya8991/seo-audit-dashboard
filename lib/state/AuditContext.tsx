@@ -109,7 +109,12 @@ export function AuditProvider({ children }: { children: ReactNode }) {
         // Extremely unlikely with IndexedDB's much larger quota, but stay
         // resilient: prune to the most recent results and retry once rather
         // than crashing or silently losing everything.
-        if (results.length > MAX_STORED_RESULTS) return; // already capped, nothing more to try
+        if (results.length <= MAX_STORED_RESULTS) {
+          // Already at/under the cap: pruning would be a no-op and retrying
+          // the same payload would fail identically, so just warn instead.
+          setStorageWarning("Could not save audit results to browser storage. Recent results may not persist.");
+          return;
+        }
         const pruned = results.slice(0, MAX_STORED_RESULTS);
         try {
           await idbSet(STORAGE_KEY, { ...payload, results: pruned });
@@ -161,7 +166,12 @@ export function AuditProvider({ children }: { children: ReactNode }) {
           return merged;
         });
         setLastAuditDate(new Date().toISOString());
-        setSelectedUrlIndex(0);
+        // Unlike addResult (a single, user-initiated audit), addResults is
+        // called repeatedly in the background while a bulk crawl is still
+        // running (lib/crawl/chunkedRunner.ts flushes every few completed
+        // URLs). Don't touch selectedUrlIndex here — doing so would yank the
+        // Detail page to a different URL out from under a user reading an
+        // already-audited result while the crawl keeps going behind the scenes.
       },
       setSelectedUrlIndex,
       setNavFilter,

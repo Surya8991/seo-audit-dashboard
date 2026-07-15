@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import sys
 from http.server import BaseHTTPRequestHandler
@@ -6,6 +7,8 @@ from http.server import BaseHTTPRequestHandler
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from modules.auditor import audit_url, validate_audit_url  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 
 def _send_json(handler, status, data):
@@ -57,5 +60,6 @@ class handler(BaseHTTPRequestHandler):
             )
             result.pop("_soup_text", None)
             _send_json(self, 200, result)
-        except Exception as e:  # noqa: BLE001
-            _send_json(self, 500, {"error": str(e)})
+        except Exception:  # noqa: BLE001
+            logger.exception("audit.py request failed")
+            _send_json(self, 500, {"error": "Internal error while running the audit."})

@@ -11,17 +11,35 @@ const DB_NAME = "seo-audit-db";
 const DB_VERSION = 1;
 const STORE_NAME = "kv";
 
+// Cached connection: chunkedRunner.ts calls idbSet after every completed URL
+// during a bulk crawl (potentially thousands of times per session), so
+// opening a fresh IDBDatabase connection per call would leak connections
+// (indexedDB.open() is never paired with a close()). Open once and reuse.
+let dbPromise: Promise<IDBDatabase> | null = null;
+
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       if (!req.result.objectStoreNames.contains(STORE_NAME)) {
         req.result.createObjectStore(STORE_NAME);
       }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      // If the connection drops (e.g. another tab triggers a version change
+      // and this one closes), clear the cache so the next call reopens.
+      req.result.onclose = () => {
+        dbPromise = null;
+      };
+      resolve(req.result);
+    };
+    req.onerror = () => {
+      dbPromise = null;
+      reject(req.error);
+    };
   });
+  return dbPromise;
 }
 
 export async function idbGet<T>(key: string): Promise<T | null> {

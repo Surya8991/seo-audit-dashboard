@@ -37,6 +37,8 @@ def _allow_all_robots_get(*args, **kwargs):
     resp = MagicMock()
     resp.status_code = 404
     resp.text = ""
+    resp.is_redirect = False
+    resp.headers = {}
     return resp
 
 
@@ -140,6 +142,8 @@ def test_robots_respect_mode_skips_disallowed_url(mock_fetch, mock_audit):
     disallow_resp = MagicMock()
     disallow_resp.status_code = 200
     disallow_resp.text = "User-agent: *\nDisallow: /private\n"
+    disallow_resp.is_redirect = False
+    disallow_resp.headers = {}
 
     with patch("modules.crawler.requests.get", return_value=disallow_resp):
         mock_fetch.side_effect = lambda url: _fetch_result(url, _soup_with_links())
@@ -156,6 +160,8 @@ def test_robots_ignore_mode_crawls_disallowed_url(mock_fetch, mock_audit):
     disallow_resp = MagicMock()
     disallow_resp.status_code = 200
     disallow_resp.text = "User-agent: *\nDisallow: /private\n"
+    disallow_resp.is_redirect = False
+    disallow_resp.headers = {}
 
     with patch("modules.crawler.requests.get", return_value=disallow_resp):
         mock_fetch.side_effect = lambda url: _fetch_result(url, _soup_with_links())

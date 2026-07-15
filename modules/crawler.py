@@ -25,7 +25,7 @@ from urllib.robotparser import RobotFileParser
 
 import requests
 
-from modules.auditor import HEADERS as DEFAULT_HEADERS, TIMEOUT, audit_url, fetch_page, validate_audit_url
+from modules.auditor import HEADERS as DEFAULT_HEADERS, TIMEOUT, audit_url, fetch_page, safe_get, validate_audit_url
 from modules.link_auditor import get_base_domain
 
 # ── User-agent presets (mirrors Semrush/Screaming Frog's UA switcher) ─────────
@@ -132,7 +132,7 @@ def _fetch_sitemap_locs(sitemap_url: str):
     if not ok:
         return [], False
     try:
-        r = requests.get(sitemap_url, headers=DEFAULT_HEADERS, timeout=TIMEOUT, verify=True)
+        r = safe_get(sitemap_url, headers=DEFAULT_HEADERS, timeout=TIMEOUT, verify=True)
         if r.status_code != 200:
             return [], False
         root_el = ET.fromstring(r.content)
@@ -151,7 +151,7 @@ def discover_sitemap_urls(seed_url: str) -> list:
 
     sitemap_urls = []
     try:
-        r = requests.get(root + "/robots.txt", headers=DEFAULT_HEADERS, timeout=TIMEOUT, verify=True)
+        r = safe_get(root + "/robots.txt", headers=DEFAULT_HEADERS, timeout=TIMEOUT, verify=True)
         if r.status_code == 200:
             sitemap_urls = [
                 line.split(":", 1)[1].strip()
@@ -194,7 +194,7 @@ def _get_robots_parser(domain_root: str, headers: dict, cache: dict, lock: threa
     rp = RobotFileParser()
     rp.set_url(domain_root + "/robots.txt")
     try:
-        r = requests.get(domain_root + "/robots.txt", headers=headers, timeout=TIMEOUT, verify=True)
+        r = safe_get(domain_root + "/robots.txt", headers=headers, timeout=TIMEOUT, verify=True)
         rp.parse(r.text.splitlines() if r.status_code == 200 else [])
     except Exception:
         rp.parse([])  # unreachable robots.txt is treated as allow-all

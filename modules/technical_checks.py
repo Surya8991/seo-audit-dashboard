@@ -21,7 +21,7 @@ from urllib.robotparser import RobotFileParser
 
 import requests
 
-from modules.auditor import HEADERS, TIMEOUT, validate_audit_url
+from modules.auditor import HEADERS, TIMEOUT, safe_get, validate_audit_url
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ def check_robots_txt(url: str) -> dict:
     robots_url = base + "/robots.txt"
 
     try:
-        r = requests.get(robots_url, headers=HEADERS, timeout=TIMEOUT, verify=True)
+        r = safe_get(robots_url, headers=HEADERS, timeout=TIMEOUT, verify=True)
     except (requests.RequestException, OSError) as exc:
         logger.warning("check_robots_txt fetch failed for %s: %s", robots_url, exc)
         return {"robots_url": robots_url, "exists": False, "allowed": None, "issues": issues}
@@ -134,7 +134,7 @@ def check_sitemap(url: str) -> dict:
     sitemap_url = f"{parsed.scheme}://{parsed.netloc}/sitemap.xml"
 
     try:
-        r = requests.get(sitemap_url, headers=HEADERS, timeout=TIMEOUT, verify=True)
+        r = safe_get(sitemap_url, headers=HEADERS, timeout=TIMEOUT, verify=True)
     except (requests.RequestException, OSError) as exc:
         logger.warning("check_sitemap fetch failed for %s: %s", sitemap_url, exc)
         issues.append(_issue("Sitemap Unreachable", "Site Health", "Warning",
@@ -294,7 +294,7 @@ def check_https_enforcement(url: str) -> dict:
 
     http_url = f"http://{parsed.netloc}{parsed.path or '/'}"
     try:
-        r = requests.get(http_url, headers=HEADERS, timeout=8, verify=True, allow_redirects=True)
+        r = safe_get(http_url, headers=HEADERS, timeout=8, verify=True)
     except (requests.RequestException, OSError) as exc:
         logger.warning("check_https_enforcement fetch failed for %s: %s", http_url, exc)
         return {"enforced": None, "issues": []}
@@ -478,7 +478,7 @@ def check_canonical_loop(url: str, soup) -> dict:
             ok, _ = validate_audit_url(canon_url)
             if not ok:
                 break
-            r = requests.get(canon_url, headers=HEADERS, timeout=TIMEOUT, verify=True)
+            r = safe_get(canon_url, headers=HEADERS, timeout=TIMEOUT, verify=True)
             from bs4 import BeautifulSoup
             current_soup = BeautifulSoup(r.content, "lxml")
             current_url = canon_url
@@ -507,7 +507,7 @@ def check_www_redirect(url: str) -> dict:
     alt_url = f"{parsed.scheme}://{alt_domain}/"
 
     try:
-        r = requests.get(alt_url, headers=HEADERS, timeout=8, verify=True, allow_redirects=True)
+        r = safe_get(alt_url, headers=HEADERS, timeout=8, verify=True)
     except (requests.RequestException, OSError):
         return {"issues": [_issue(f"{alt_domain} Does Not Resolve", "Site Health", "Warning",
             "Add a DNS record and redirect so both www and non-www variants reach your site.",

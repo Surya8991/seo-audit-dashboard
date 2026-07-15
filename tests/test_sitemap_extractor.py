@@ -47,6 +47,8 @@ def _resp(content, status=200, url="https://example.com/sitemap.xml"):
     m.content = content
     m.status_code = status
     m.url = url
+    m.is_redirect = False
+    m.headers = {}
     return m
 
 

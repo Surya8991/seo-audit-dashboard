@@ -8,6 +8,8 @@ from modules.technical_checks import check_https_enforcement
 def _mock_response(final_url):
     resp = MagicMock()
     resp.url = final_url
+    resp.is_redirect = False
+    resp.headers = {}
     return resp
 
 

@@ -1,5 +1,6 @@
 import gzip
 import json
+import logging
 import os
 import sys
 from http.server import BaseHTTPRequestHandler
@@ -7,6 +8,8 @@ from http.server import BaseHTTPRequestHandler
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from modules.report_generator import generate_csv, generate_excel, generate_pdf  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 MIME = {
     "csv": "text/csv",
@@ -77,5 +80,6 @@ class handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
-        except Exception as e:  # noqa: BLE001
-            _send_json(self, 500, {"error": str(e)})
+        except Exception:  # noqa: BLE001
+            logger.exception("export.py request failed")
+            _send_json(self, 500, {"error": "Internal error while generating the export."})

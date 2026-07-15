@@ -511,7 +511,7 @@ def linkify_paragraph_html(p_tag, base_url, max_chars=400):
         if getattr(node, "name", None) == "a":
             href = (node.get("href") or "").strip()
             text = node.get_text(" ", strip=True)
-            is_linkable = href and text and not href.startswith(
+            is_linkable = href and text and not href.lower().startswith(
                 ("#", "mailto:", "tel:", "javascript:", "data:")
             )
             if not is_linkable:

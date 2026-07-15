@@ -18,6 +18,14 @@ function hostOf(url: string): string {
   }
 }
 
+function pathnameOf(url: string): string {
+  try {
+    return new URL(url).pathname || url;
+  } catch {
+    return url;
+  }
+}
+
 /** Compact Easy/Medium/Hard fix-effort counts for a result's issues. */
 function EffortChips({ result }: { result: AuditResult }) {
   const b = difficultyBreakdown(result.all_issues || []);
@@ -273,7 +281,7 @@ export default function ResultsPage() {
                             className="cursor-pointer border-b border-[var(--table-row-border)] last:border-0 hover:bg-[var(--table-row-hover)]"
                           >
                             <td className="max-w-xs truncate px-4 py-3 font-medium text-[var(--seo-subheading)]">
-                              {new URL(r.url).pathname || r.url}
+                              {pathnameOf(r.url)}
                               {r.status_code && r.status_code !== 200 ? (
                                 <span className="ml-2 text-xs text-[var(--seo-error)]">{r.status_code}</span>
                               ) : null}
