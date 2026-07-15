@@ -1,8 +1,21 @@
+// Single source of truth for score tiering: scoreColor() (on-screen badges)
+// and scoreLabel() (CSV/Excel export, lib/reportExport.ts) used to have
+// independently-drifted thresholds (90/70/50 vs 90/75/50), so a score of
+// 72-74 rendered "good" on screen but exported as "Needs Attention".
+export const SCORE_THRESHOLDS = { excellent: 90, good: 70, needsAttention: 50 };
+
 export function scoreColor(score: number): string {
-  if (score >= 90) return "#10B981";
-  if (score >= 70) return "#0369A1";
-  if (score >= 50) return "#D97706";
+  if (score >= SCORE_THRESHOLDS.excellent) return "#10B981";
+  if (score >= SCORE_THRESHOLDS.good) return "#0369A1";
+  if (score >= SCORE_THRESHOLDS.needsAttention) return "#D97706";
   return "#DC2626";
+}
+
+export function scoreLabel(score: number): string {
+  if (score >= SCORE_THRESHOLDS.excellent) return "Excellent";
+  if (score >= SCORE_THRESHOLDS.good) return "Good";
+  if (score >= SCORE_THRESHOLDS.needsAttention) return "Needs Attention";
+  return "Critical";
 }
 
 export function severityColor(severity: string): { text: string; bg: string } {

@@ -21,7 +21,7 @@ from urllib.robotparser import RobotFileParser
 
 import requests
 
-from modules.auditor import HEADERS, TIMEOUT, safe_get, validate_audit_url
+from modules.auditor import HEADERS, TIMEOUT, _issue, safe_get, validate_audit_url
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +30,6 @@ _dns_cache: dict[str, tuple] = {}
 _dns_cache_lock = threading.Lock()
 
 
-def _issue(issue, category, severity, recommendation, impact_score=5, effort="Medium"):
-    return {
-        "issue": issue,
-        "category": category,
-        "severity": severity,
-        "recommendation": recommendation,
-        "impact_score": impact_score,
-        "effort": effort,
-    }
 
 
 def _public_hostname(url: str) -> str:

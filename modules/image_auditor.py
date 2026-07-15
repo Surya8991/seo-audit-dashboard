@@ -14,7 +14,7 @@ try:
 except ImportError:
     REQUESTS_AVAILABLE = False
 
-from modules.auditor import validate_audit_url, BlockedURLError
+from modules.auditor import safe_request
 
 
 # ---------------------------------------------------------------------------
@@ -157,25 +157,14 @@ def _fetch_size(url, referer=None):
             return method(*args, **kwargs, verify=False)
 
     def _safe_fetch(method, target_url, *, max_redirects=5, **kwargs):
-        """SSRF-safe fetch: re-validates the URL and every redirect hop with
-        `validate_audit_url` before requesting it, mirroring
-        `auditor.safe_get` but supporting arbitrary methods (HEAD included)
-        since image size-checking needs HEAD as its fast path."""
-        kwargs["allow_redirects"] = False
-        current = target_url
-        history = []
-        for _ in range(max_redirects + 1):
-            ok, msg = validate_audit_url(current)
-            if not ok:
-                raise BlockedURLError(msg)
-            resp = _get(method, current, **kwargs)
-            if resp.is_redirect and resp.headers.get("Location"):
-                history.append(resp)
-                current = urljoin(current, resp.headers["Location"])
-                continue
-            resp.history = history
-            return resp
-        raise requests.TooManyRedirects(f"Exceeded {max_redirects} redirects")
+        """SSRF-safe fetch with a TLS-verify fallback: shares
+        `auditor.safe_request`'s per-hop redirect re-validation, wrapping
+        `method` so each attempt still gets the verify=True-then-False retry
+        image size-checking needs (self-signed certs are common on the sites
+        this audits)."""
+        return safe_request(
+            lambda u, **kw: _get(method, u, **kw), target_url, max_redirects=max_redirects, **kwargs
+        )
 
     try:
         # ── 1. HEAD ───────────────────────────────────────────────────────

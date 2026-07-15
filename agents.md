@@ -35,7 +35,9 @@ prior standalone Streamlit SEO audit tool ported in on top.
   `components/AppShell.tsx`); the list routes to the detail via
   `setSelectedUrlIndex` + `router.push("/detail")`.
 - **Fix-difficulty labels:** every issue carries an `effort` field (Low/Medium/
-  High) from `modules/technical_checks.py::_issue` and `modules/auditor.py`.
+  High) from `modules/auditor.py::_issue` (the single shared issue-dict
+  builder; `technical_checks.py` imports it rather than redefining it — don't
+  reintroduce a second copy there).
   `lib/difficulty.ts` maps that to Easy/Medium/Hard (keyword fallback when
   `effort` is absent); surfaced via `DifficultyBadge` (in `components/ui.tsx`,
   wired into `IssueRow`), a "Fix effort" column on the Results list, and a
@@ -122,8 +124,47 @@ prior standalone Streamlit SEO audit tool ported in on top.
   duplicating it), Social Preview (OG); Site Health -> domain/protocol detail
   + security headers. The old "estimated Core Web Vitals" card was dropped
   (superseded by Performance tab's real PSI-based CWV, keeping it was a
-  duplicate). Detail tabs are now 8: Overview, Technical, Issues, Links,
-  Headings, Content & Images, Performance, Recommendations.
+  duplicate). Detail tabs are now 7: Overview, Technical, Issues, Links,
+  Headings, Content & Images, Performance. ("Recommendations" was an 8th tab
+  that just re-rendered the top-10-by-impact issues through the same
+  `IssueRow` the Issues tab already uses; folded into a "Top Issues by
+  Impact" card at the top of Issues instead, plus a smaller top-3 version on
+  Overview — see `topIssues` in `app/detail/page.tsx`. Both tabs and TabBar
+  itself now share `components/ui.tsx::TabBar`/`IssueExplanationGrid`, see
+  the "Shared UI components" note below.) The Content & Images tab's Images
+  card cross-links to Performance's Image SEO sub-tab (same pattern as the
+  Technical tab's Mobile Responsiveness cross-link). Headings' old "H1
+  Across Site" sub-tab (a cross-URL report living on a per-URL page) moved
+  to the Results page as a collapsible "Sitewide H1 Report" card, next to
+  the Sitewide Summary rollup — `HeadingsView` no longer takes an
+  `allResults` prop.
+- **Shared UI components** (`components/ui.tsx`): `TabBar` (generic tab-bar
+  row, used by `LinksView`/`HeadingsView`/`PerformanceView`'s Mobile↔Image
+  SEO switch/the Detail page's top-level tabs — previously 4 byte-identical
+  copies) and `IssueExplanationGrid` (the What-is-it/Why/SEO-impact/User-
+  impact/Recommended-fix grid, used by `HeadingsView`/`PerformanceView`'s
+  `ImageIssueDetail`/`LinksView`'s `IssueDetail` — previously 3 independently
+  drifted copies, e.g. "why it matters" vs "why is it important?"). Add new
+  tab switches or issue-explanation panels through these, don't hand-roll a
+  new copy. `ui.tsx`'s own `CommonIssueDetail` (backing the Common Issues KB
+  "Learn more" expansion) is intentionally NOT merged into
+  `IssueExplanationGrid`: it has a different container (card background) and
+  an extra `source` citation field the other three don't have.
+- **`api/*.py` shared helpers** (`modules/_http.py`): `send_json`,
+  `read_json_body`, `require_str`, `validate_url_or_400`, `validate_pattern`
+  consolidate what used to be byte-identical boilerplate copy-pasted into
+  every `api/*.py` handler (each is its own isolated Vercel function, but
+  they already import freely from `modules/*`, so sharing costs nothing).
+  `api/export.py` keeps its own `decode_request_body` (gzip-aware, genuinely
+  different from `read_json_body`) but reuses `send_json`. New `api/*.py`
+  handlers should use these instead of re-adding a local `_send_json`.
+- **SSRF: `modules/auditor.py::safe_get` is now `safe_request(method, url,
+  ...)` generalized** (`safe_get` is a thin `requests.get`-bound wrapper over
+  it). `link_auditor.py::validate_url` and `image_auditor.py::_fetch_size`
+  both now route their HEAD/GET calls through `safe_request` too (previously
+  each re-implemented its own manual redirect-loop, and `link_auditor.py`'s
+  didn't re-validate redirect hops at all — a real SSRF gap, since a link
+  that passed the initial check could still 301 to an internal host).
 - `lib/checklistDefs.ts`: the **frontend mirror** of the 35 check ids/labels/
   groups in `modules/technical_audit_checklist.py`, plus a one-sentence
   plain-English `description` per check (used by the explainer card, the

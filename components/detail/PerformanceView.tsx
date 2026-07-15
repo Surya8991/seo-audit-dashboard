@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, Fragment } from "react";
-import { Card, MetricCard } from "@/components/ui";
+import { Card, IssueExplanationGrid, MetricCard, TabBar } from "@/components/ui";
 import { downloadCsv } from "@/lib/format";
 import type { AuditResult } from "@/lib/types";
 import {
@@ -130,21 +130,7 @@ export function PerformanceView({ result }: { result: AuditResult }) {
 
   return (
     <div>
-      <div className="mb-4 flex gap-1 border-b border-[var(--seo-border)]">
-        {(["Mobile", "Image SEO"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setSubTab(t)}
-            className={`rounded-t-lg px-3 py-2 text-sm font-medium ${
-              subTab === t
-                ? "border-b-2 border-[var(--seo-accent)] text-[var(--seo-accent)]"
-                : "text-[var(--seo-text-light)] hover:text-[var(--seo-subheading)]"
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <TabBar tabs={["Mobile", "Image SEO"] as const} active={subTab} onChange={setSubTab} />
 
       {subTab === "Mobile" ? (
         <div className="flex flex-col gap-4">
@@ -608,40 +594,16 @@ function ImageIssueDetail({ explanation }: { explanation: ReturnType<typeof expl
   if (!explanation) return null;
   const color = STATUS_COLOR_HEX[explanation.status];
   return (
-    <div className="flex flex-col gap-2 text-sm">
-      <div className="flex items-center gap-2">
-        <span className="rounded-full px-2 py-0.5 text-xs font-semibold" style={{ color, backgroundColor: `${color}18` }}>
-          {explanation.issueName}
-        </span>
-        <span className="text-xs text-[var(--seo-muted)]">Severity: {explanation.severity}</span>
-      </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div>
-          <h5 className="text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">What is it?</h5>
-          <p className="text-[var(--seo-text)]">{explanation.whatIsIt}</p>
-        </div>
-        <div>
-          <h5 className="text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">Why is it important?</h5>
-          <p className="text-[var(--seo-text)]">{explanation.whyImportant}</p>
-        </div>
-        <div>
-          <h5 className="text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">SEO Impact</h5>
-          <p className="text-[var(--seo-text)]">{explanation.seoImpact}</p>
-        </div>
-        <div>
-          <h5 className="text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">User Impact</h5>
-          <p className="text-[var(--seo-text)]">{explanation.userImpact}</p>
-        </div>
-      </div>
-      <div>
-        <h5 className="text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">Recommended Fix</h5>
-        <p className="text-[var(--seo-text)]">{explanation.recommendedFix}</p>
-        {explanation.htmlExample ? (
-          <pre className="mt-1 overflow-x-auto rounded-lg bg-[var(--seo-card-hover)] p-2 text-xs text-[var(--seo-subheading)]">
-            {explanation.htmlExample}
-          </pre>
-        ) : null}
-      </div>
-    </div>
+    <IssueExplanationGrid
+      header={{ issueName: explanation.issueName, severity: explanation.severity, color }}
+      fields={[
+        { label: "What is it?", value: explanation.whatIsIt },
+        { label: "Why is it important?", value: explanation.whyImportant },
+        { label: "SEO Impact", value: explanation.seoImpact },
+        { label: "User Impact", value: explanation.userImpact },
+      ]}
+      recommendedFix={explanation.recommendedFix}
+      htmlExample={explanation.htmlExample}
+    />
   );
 }

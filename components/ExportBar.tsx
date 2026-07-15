@@ -31,11 +31,13 @@ const FORMATS = [
  * past Vercel's ~4.5MB serverless request-body limit on anything but a tiny
  * result set).
  */
-export function ExportBar({ results }: { results: AuditResult[] }) {
+export function ExportBar({ results, totalCount }: { results: AuditResult[]; totalCount?: number }) {
   const [loadingFormat, setLoadingFormat] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const isFiltered = totalCount !== undefined && totalCount !== results.length;
 
   async function handleExport(format: string) {
+    if (!results.length) return;
     setLoadingFormat(format);
     setError(null);
     try {
@@ -97,7 +99,7 @@ export function ExportBar({ results }: { results: AuditResult[] }) {
               key={f.id}
               type="button"
               onClick={() => handleExport(f.id)}
-              disabled={loadingFormat !== null}
+              disabled={loadingFormat !== null || results.length === 0}
               title={f.desc}
               className="rounded-lg border border-[var(--seo-border-strong)] px-3 py-1.5 text-sm font-medium text-[var(--seo-text)] hover:bg-[var(--seo-card-hover)] disabled:opacity-60"
             >
@@ -106,7 +108,9 @@ export function ExportBar({ results }: { results: AuditResult[] }) {
           ))}
         </div>
         <span className="text-xs text-[var(--seo-muted)]">
-          {results.length} URL{results.length === 1 ? "" : "s"} in this session
+          {results.length === 0
+            ? "No URLs match the current filters"
+            : `${results.length} URL${results.length === 1 ? "" : "s"}${isFiltered ? ` of ${totalCount} total (matches current filters)` : " in this session"}`}
         </span>
       </div>
       {error ? (

@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import sys
@@ -6,35 +5,21 @@ from http.server import BaseHTTPRequestHandler
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from modules.auditor import audit_url, validate_audit_url  # noqa: E402
+from modules._http import read_json_body, require_str, send_json, validate_url_or_400  # noqa: E402
+from modules.auditor import audit_url  # noqa: E402
 
 logger = logging.getLogger(__name__)
-
-
-def _send_json(handler, status, data):
-    body = json.dumps(data, default=str).encode("utf-8")
-    handler.send_response(status)
-    handler.send_header("Content-Type", "application/json")
-    handler.send_header("Content-Length", str(len(body)))
-    handler.end_headers()
-    handler.wfile.write(body)
 
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
-            length = int(self.headers.get("Content-Length", 0) or 0)
-            body = self.rfile.read(length) if length else b"{}"
-            payload = json.loads(body or b"{}")
+            payload = read_json_body(self)
 
-            url = (payload.get("url") or "").strip()
-            if not url:
-                _send_json(self, 400, {"error": "url is required"})
+            url = require_str(self, payload, "url")
+            if url is None:
                 return
-
-            ok, msg = validate_audit_url(url)
-            if not ok:
-                _send_json(self, 400, {"error": msg})
+            if not validate_url_or_400(self, url):
                 return
 
             audit_type = payload.get("auditType", "auto")
@@ -59,7 +44,7 @@ class handler(BaseHTTPRequestHandler):
                 prefetched_domain_health=prefetched_domain_health,
             )
             result.pop("_soup_text", None)
-            _send_json(self, 200, result)
+            send_json(self, 200, result)
         except Exception:  # noqa: BLE001
             logger.exception("audit.py request failed")
-            _send_json(self, 500, {"error": "Internal error while running the audit."})
+            send_json(self, 500, {"error": "Internal error while running the audit."})

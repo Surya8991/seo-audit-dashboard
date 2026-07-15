@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Card, MetricCard } from "@/components/ui";
+import { Card, IssueExplanationGrid, MetricCard, TabBar } from "@/components/ui";
 import { downloadCsv } from "@/lib/format";
 import type { AuditResult, Issue } from "@/lib/types";
 import { explainHeadingIssue, STATUS_COLOR_HEX } from "@/lib/headingAnalysis";
 
-const TABS = ["Hierarchy Tree", "Heading List", "H1 Across Site", "Issues"] as const;
+const TABS = ["Hierarchy Tree", "Heading List", "Issues"] as const;
 type Tab = (typeof TABS)[number];
 
 interface HeadingItem {
@@ -18,7 +18,7 @@ interface HeadingItem {
   id_attr: string | null;
 }
 
-export function HeadingsView({ result, allResults }: { result: AuditResult; allResults: AuditResult[] }) {
+export function HeadingsView({ result }: { result: AuditResult }) {
   const [tab, setTab] = useState<Tab>("Hierarchy Tree");
   const [expandedIssue, setExpandedIssue] = useState<number | null>(null);
 
@@ -34,14 +34,6 @@ export function HeadingsView({ result, allResults }: { result: AuditResult; allR
     downloadCsv(`headings-${r.url.replace(/[^a-z0-9]/gi, "-")}.csv`, rows);
   }
 
-  function exportSiteH1Csv() {
-    const rows = [["URL", "H1 Text", "H1 Count"]];
-    for (const res of allResults) {
-      rows.push([res.url, res.heading_detail?.h1_text || "", String(res.heading_detail?.counts?.h1 ?? 0)]);
-    }
-    downloadCsv("site-h1-report.csv", rows);
-  }
-
   return (
     <div>
       <div className="mb-4 grid grid-cols-3 gap-4 md:grid-cols-6">
@@ -50,21 +42,7 @@ export function HeadingsView({ result, allResults }: { result: AuditResult; allR
         ))}
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-1 border-b border-[var(--seo-border)]">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`rounded-t-lg px-3 py-2 text-sm font-medium ${
-              tab === t
-                ? "border-b-2 border-[var(--seo-accent)] text-[var(--seo-accent)]"
-                : "text-[var(--seo-text-light)] hover:text-[var(--seo-subheading)]"
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <TabBar tabs={TABS} active={tab} onChange={setTab} />
 
       {tab === "Hierarchy Tree" ? (
         <Card>
@@ -118,37 +96,6 @@ export function HeadingsView({ result, allResults }: { result: AuditResult; allR
         </Card>
       ) : null}
 
-      {tab === "H1 Across Site" ? (
-        <Card className="overflow-x-auto p-0">
-          <div className="flex justify-end p-3">
-            <button
-              onClick={exportSiteH1Csv}
-              className="rounded-lg border border-[var(--seo-border-strong)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--seo-card-hover)]"
-            >
-              Export CSV
-            </button>
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--seo-border)] bg-[var(--table-header-bg)] text-left text-xs uppercase tracking-wide text-[var(--seo-muted)]">
-                <th className="px-4 py-3">URL</th>
-                <th className="px-4 py-3">H1 Text</th>
-                <th className="px-4 py-3">H1 Count</th>
-              </tr>
-            </thead>
-            <tbody>
-              {allResults.map((res) => (
-                <tr key={res.url} className="border-b border-[var(--table-row-border)]">
-                  <td className="max-w-xs truncate px-4 py-3">{res.url}</td>
-                  <td className="px-4 py-3">{res.heading_detail?.h1_text || <em>none</em>}</td>
-                  <td className="px-4 py-3">{res.heading_detail?.counts?.h1 ?? 0}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      ) : null}
-
       {tab === "Issues" ? (
         <Card>
           {issues.map((issue, i) => {
@@ -175,34 +122,17 @@ export function HeadingsView({ result, allResults }: { result: AuditResult; allR
                   </button>
                 </div>
                 {isExpanded ? (
-                  <div className="mt-3 flex flex-col gap-3 rounded-lg bg-[var(--seo-card-alt)] p-3 text-sm">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div>
-                        <h5 className="text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">What is it?</h5>
-                        <p className="text-[var(--seo-text)]">{explanation.whatIsIt}</p>
-                      </div>
-                      <div>
-                        <h5 className="text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">Why is it important?</h5>
-                        <p className="text-[var(--seo-text)]">{explanation.whyImportant}</p>
-                      </div>
-                      <div>
-                        <h5 className="text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">SEO Impact</h5>
-                        <p className="text-[var(--seo-text)]">{explanation.seoImpact}</p>
-                      </div>
-                      <div>
-                        <h5 className="text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">User Impact</h5>
-                        <p className="text-[var(--seo-text)]">{explanation.userImpact}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <h5 className="text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">Recommended Fix</h5>
-                      <p className="text-[var(--seo-text)]">{explanation.recommendedFix}</p>
-                      {explanation.htmlExample ? (
-                        <pre className="mt-1 overflow-x-auto rounded-lg bg-[var(--seo-card-hover)] p-2 text-xs text-[var(--seo-subheading)]">
-                          {explanation.htmlExample}
-                        </pre>
-                      ) : null}
-                    </div>
+                  <div className="mt-3 rounded-lg bg-[var(--seo-card-alt)] p-3">
+                    <IssueExplanationGrid
+                      fields={[
+                        { label: "What is it?", value: explanation.whatIsIt },
+                        { label: "Why is it important?", value: explanation.whyImportant },
+                        { label: "SEO Impact", value: explanation.seoImpact },
+                        { label: "User Impact", value: explanation.userImpact },
+                      ]}
+                      recommendedFix={explanation.recommendedFix}
+                      htmlExample={explanation.htmlExample}
+                    />
                   </div>
                 ) : null}
               </div>

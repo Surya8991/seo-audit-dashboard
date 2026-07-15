@@ -7,6 +7,7 @@ from http.server import BaseHTTPRequestHandler
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from modules._http import send_json  # noqa: E402
 from modules.report_generator import generate_csv, generate_excel, generate_pdf  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -17,15 +18,6 @@ MIME = {
     "pdf": "application/pdf",
     "json": "application/json",
 }
-
-
-def _send_json(handler, status, data):
-    body = json.dumps(data, default=str).encode("utf-8")
-    handler.send_response(status)
-    handler.send_header("Content-Type", "application/json")
-    handler.send_header("Content-Length", str(len(body)))
-    handler.end_headers()
-    handler.wfile.write(body)
 
 
 def decode_request_body(raw_body: bytes, content_encoding: str | None) -> dict:
@@ -51,16 +43,16 @@ class handler(BaseHTTPRequestHandler):
             try:
                 payload = decode_request_body(raw_body, self.headers.get("Content-Encoding"))
             except (json.JSONDecodeError, OSError):
-                _send_json(self, 400, {"error": "request body must be valid JSON"})
+                send_json(self, 400, {"error": "request body must be valid JSON"})
                 return
 
             results = payload.get("results") or []
             fmt = payload.get("format", "csv")
             if fmt not in MIME:
-                _send_json(self, 400, {"error": "format must be csv, xlsx, pdf, or json"})
+                send_json(self, 400, {"error": "format must be csv, xlsx, pdf, or json"})
                 return
             if not isinstance(results, list) or not results:
-                _send_json(self, 400, {"error": "results must be a non-empty list of audit results"})
+                send_json(self, 400, {"error": "results must be a non-empty list of audit results"})
                 return
 
             if fmt == "csv":
@@ -82,4 +74,4 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(data)
         except Exception:  # noqa: BLE001
             logger.exception("export.py request failed")
-            _send_json(self, 500, {"error": "Internal error while generating the export."})
+            send_json(self, 500, {"error": "Internal error while generating the export."})

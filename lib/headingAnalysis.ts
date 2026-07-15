@@ -12,9 +12,16 @@ export interface HeadingIssueExplanation {
   htmlExample?: string;
 }
 
+// Covers the full severity vocabulary modules/*.py actually emits (Critical/
+// High/Medium/Warning/Low, see lib/reportExport.ts's export-column mapping).
+// Previously missing "Critical"/"Warning" entirely (falling through to the
+// "info" default below) and mapped "High" to the "critical" status instead
+// of the distinct "high" tier StatusColor already defines.
 const SEVERITY_STATUS: Record<string, StatusColor> = {
-  High: "critical",
+  Critical: "critical",
+  High: "high",
   Medium: "warning",
+  Warning: "warning",
   Low: "info",
 };
 

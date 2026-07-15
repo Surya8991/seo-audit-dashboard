@@ -7,7 +7,7 @@ from urllib.parse import urlparse, urljoin
 import requests
 from bs4 import BeautifulSoup
 
-from modules.auditor import validate_audit_url
+from modules.auditor import BlockedURLError, safe_request, validate_audit_url
 
 # Browser-like headers: avoids 403/999 bot blocks on LinkedIn, McKinsey, etc.
 HEADERS = {
@@ -152,6 +152,19 @@ def link_health(code, domain=""):
     return "unknown"
 
 
+def _resolve_href(href, base_url):
+    """Resolve an <a href> to an absolute URL. Handles the scheme-relative
+    `//host/path` form explicitly, since `urljoin` alone doesn't special-case
+    it the way this needs (was duplicated identically in parse_link_tag and
+    linkify_paragraph_html before being pulled out here)."""
+    if href.startswith("//"):
+        scheme = urlparse(base_url).scheme or "https"
+        return scheme + ":" + href
+    if href.startswith(("http://", "https://")):
+        return href
+    return urljoin(base_url, href)
+
+
 def classify_link(href, base_url):
     if not href or href.startswith(("#", "mailto:", "tel:", "javascript:", "data:")):
         return None
@@ -248,13 +261,7 @@ def parse_link_tag(tag, base_url):
     if not href or href.startswith(("#", "mailto:", "tel:", "javascript:", "data:")):
         return None
 
-    if href.startswith("//"):
-        scheme = urlparse(base_url).scheme or "https"
-        full_url = scheme + ":" + href
-    elif href.startswith("http"):
-        full_url = href
-    else:
-        full_url = urljoin(base_url, href)
+    full_url = _resolve_href(href, base_url)
 
     rel_attr = tag.get("rel", [])
     if isinstance(rel_attr, str):
@@ -348,28 +355,58 @@ def validate_url(url):
         }
 
     ssl_error = False
-    try:
+
+    def _get_with_ssl_fallback(method, u, **kwargs):
+        nonlocal ssl_error
         try:
-            resp = _session.head(
-                url, timeout=TIMEOUT, allow_redirects=True, verify=True
-            )
+            return method(u, **kwargs, verify=True)
         except requests.exceptions.SSLError:
             ssl_error = True
-            resp = _session.head(
-                url, timeout=TIMEOUT, allow_redirects=True, verify=False
+            return method(u, **kwargs, verify=False)
+
+    try:
+        # SSRF guard, part 2: the check above only validates the URL as
+        # given. `allow_redirects=True` used to let `requests` follow
+        # redirects unguarded from there, so a link that passed the initial
+        # check but 301'd to an internal/metadata host would be fetched
+        # anyway. `safe_request` re-validates every hop before requesting it.
+        try:
+            resp = safe_request(
+                lambda u, **kw: _get_with_ssl_fallback(_session.head, u, **kw),
+                url, timeout=TIMEOUT,
             )
+        except BlockedURLError:
+            return {
+                "url": url,
+                "status_code": 0,
+                "status_label": "Blocked (internal address)",
+                "health": "blocked",
+                "is_broken": False,
+                "is_redirect": False,
+                "final_url": url,
+                "redirect_count": 0,
+                "note": "Skipped: redirected to a private/internal address",
+            }
         code = resp.status_code
 
         if code in (405, 501):
             try:
-                resp = _session.get(
-                    url, timeout=TIMEOUT, allow_redirects=True, verify=True, stream=True
+                resp = safe_request(
+                    lambda u, **kw: _get_with_ssl_fallback(_session.get, u, **kw),
+                    url, timeout=TIMEOUT, stream=True,
                 )
-            except requests.exceptions.SSLError:
-                ssl_error = True
-                resp = _session.get(
-                    url, timeout=TIMEOUT, allow_redirects=True, verify=False, stream=True
-                )
+            except BlockedURLError:
+                return {
+                    "url": url,
+                    "status_code": 0,
+                    "status_label": "Blocked (internal address)",
+                    "health": "blocked",
+                    "is_broken": False,
+                    "is_redirect": False,
+                    "final_url": url,
+                    "redirect_count": 0,
+                    "note": "Skipped: redirected to a private/internal address",
+                }
             resp.close()
             code = resp.status_code
 
@@ -523,13 +560,7 @@ def linkify_paragraph_html(p_tag, base_url, max_chars=400):
                     parts.append(_html.escape(clip))
                 continue
 
-            if href.startswith("//"):
-                scheme = urlparse(base_url).scheme or "https"
-                full_url = scheme + ":" + href
-            elif href.startswith(("http://", "https://")):
-                full_url = href
-            else:
-                full_url = urljoin(base_url, href)
+            full_url = _resolve_href(href, base_url)
 
             clip = text[:budget]
             if len(text) > budget:

@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import sys
@@ -6,37 +5,26 @@ from http.server import BaseHTTPRequestHandler
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from modules._http import read_json_body, require_str, send_json  # noqa: E402
 from modules.pagespeed import fetch_pagespeed  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
 
-def _send_json(handler, status, data):
-    body = json.dumps(data, default=str).encode("utf-8")
-    handler.send_response(status)
-    handler.send_header("Content-Type", "application/json")
-    handler.send_header("Content-Length", str(len(body)))
-    handler.end_headers()
-    handler.wfile.write(body)
-
-
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
-            length = int(self.headers.get("Content-Length", 0) or 0)
-            body = self.rfile.read(length) if length else b"{}"
-            payload = json.loads(body or b"{}")
+            payload = read_json_body(self)
 
-            url = (payload.get("url") or "").strip()
-            if not url:
-                _send_json(self, 400, {"error": "url is required"})
+            url = require_str(self, payload, "url")
+            if url is None:
                 return
 
             strategy = payload.get("strategy", "mobile")
             api_key = payload.get("apiKey") or os.environ.get("PSI_API_KEY")
 
             result = fetch_pagespeed(url, strategy=strategy, api_key=api_key)
-            _send_json(self, 200, result)
+            send_json(self, 200, result)
         except Exception:  # noqa: BLE001
             logger.exception("pagespeed.py request failed")
-            _send_json(self, 500, {"error": "Internal error while fetching PageSpeed data."})
+            send_json(self, 500, {"error": "Internal error while fetching PageSpeed data."})

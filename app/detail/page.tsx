@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useAudit } from "@/lib/state/AuditContext";
-import { Card, DifficultyBadge, EmptyState, IssueRow, PageHeader, ScoreBadge, StatusPill } from "@/components/ui";
+import { Card, DifficultyBadge, EmptyState, IssueRow, PageHeader, ScoreBadge, StatusPill, TabBar } from "@/components/ui";
 import { difficultyBreakdown } from "@/lib/difficulty";
 import { getThematicIssues, getTopIssuesByImpact } from "@/lib/aggregate";
 import { WEIGHTS } from "@/lib/scoring";
@@ -16,6 +16,10 @@ import { LinksView } from "@/components/detail/LinksView";
 import { HeadingsView } from "@/components/detail/HeadingsView";
 import { PerformanceView } from "@/components/detail/PerformanceView";
 
+// "Recommendations" used to be its own 8th tab, but it just re-rendered the
+// top-10 issues through the same IssueRow the Issues tab already uses —
+// folded into a card at the top of Issues instead of a separate tab a user
+// had to click through 7 others to reach.
 const TABS = [
   "Overview",
   "Technical",
@@ -24,7 +28,6 @@ const TABS = [
   "Headings",
   "Content & Images",
   "Performance",
-  "Recommendations",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -242,24 +245,30 @@ export default function DetailPage() {
           : null}
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-1 border-b border-[var(--seo-border)]">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`rounded-t-lg px-3 py-2 text-sm font-medium ${
-              tab === t
-                ? "border-b-2 border-[var(--seo-accent)] text-[var(--seo-accent)]"
-                : "text-[var(--seo-text-light)] hover:text-[var(--seo-subheading)]"
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <TabBar tabs={TABS} active={tab} onChange={setTab} />
 
       {tab === "Overview" ? (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {topIssues.length > 0 ? (
+            <Card className="lg:col-span-2">
+              <div className="mb-1 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-[var(--seo-subheading)]">
+                  Top Priority Fixes
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setTab("Issues")}
+                  className="text-xs font-medium text-[var(--seo-accent)] hover:underline"
+                >
+                  View all {issues.length} issues →
+                </button>
+              </div>
+              {topIssues.slice(0, 3).map((issue, i) => (
+                <IssueRow key={i} issue={issue} />
+              ))}
+            </Card>
+          ) : null}
+
           <Card>
             <h3 className="mb-3 text-sm font-semibold text-[var(--seo-subheading)]">
               Score Breakdown
@@ -659,6 +668,16 @@ export default function DetailPage() {
 
       {tab === "Issues" ? (
         <div className="flex flex-col gap-4">
+          {topIssues.length > 0 ? (
+            <Card>
+              <h3 className="mb-1 text-sm font-semibold text-[var(--seo-subheading)]">
+                Top Issues by Impact
+              </h3>
+              {topIssues.slice(0, 5).map((issue, i) => (
+                <IssueRow key={i} issue={issue} />
+              ))}
+            </Card>
+          ) : null}
           {Object.entries(grouped).map(([theme, themeIssues]) => (
             <Card key={theme}>
               <h3 className="mb-1 text-sm font-semibold text-[var(--seo-subheading)]">
@@ -675,7 +694,7 @@ export default function DetailPage() {
 
       {tab === "Links" ? <LinksView result={r} /> : null}
 
-      {tab === "Headings" ? <HeadingsView result={r} allResults={results} /> : null}
+      {tab === "Headings" ? <HeadingsView result={r} /> : null}
 
       {tab === "Content & Images" ? (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -725,22 +744,18 @@ export default function DetailPage() {
               Images
             </h3>
             <KeyValueGrid data={r.image_detail?.summary || r.image_detail || {}} />
+            <button
+              type="button"
+              onClick={() => setTab("Performance")}
+              className="mt-2 text-xs font-medium text-[var(--seo-accent)] hover:underline"
+            >
+              View full image SEO audit → Performance tab
+            </button>
           </Card>
         </div>
       ) : null}
 
       {tab === "Performance" ? <PerformanceView result={r} /> : null}
-
-      {tab === "Recommendations" ? (
-        <Card>
-          <h3 className="mb-1 text-sm font-semibold text-[var(--seo-subheading)]">
-            Top Issues by Impact
-          </h3>
-          {topIssues.map((issue, i) => (
-            <IssueRow key={i} issue={issue} />
-          ))}
-        </Card>
-      ) : null}
     </div>
   );
 }

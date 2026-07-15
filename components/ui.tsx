@@ -8,6 +8,38 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
   return <div className={`card p-5 ${className}`}>{children}</div>;
 }
 
+/** Shared tab-bar row (was copy-pasted byte-for-byte across LinksView,
+ * HeadingsView, PerformanceView's Mobile/Image SEO switch, and the Detail
+ * page's 8 top-level tabs). `T` is whatever string union the caller's tab
+ * state uses. */
+export function TabBar<T extends string>({
+  tabs,
+  active,
+  onChange,
+}: {
+  tabs: readonly T[];
+  active: T;
+  onChange: (tab: T) => void;
+}) {
+  return (
+    <div className="mb-4 flex flex-wrap gap-1 border-b border-[var(--seo-border)]">
+      {tabs.map((t) => (
+        <button
+          key={t}
+          onClick={() => onChange(t)}
+          className={`rounded-t-lg px-3 py-2 text-sm font-medium ${
+            active === t
+              ? "border-b-2 border-[var(--seo-accent)] text-[var(--seo-accent)]"
+              : "text-[var(--seo-text-light)] hover:text-[var(--seo-subheading)]"
+          }`}
+        >
+          {t}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function MetricCard({
   label,
   value,
@@ -169,6 +201,57 @@ function CommonIssueDetail({ explanation }: { explanation: NonNullable<ReturnTyp
         <p className="text-sm text-[var(--seo-text)]">{explanation.recommendedFix}</p>
         {explanation.source ? (
           <p className="mt-1 text-xs text-[var(--seo-muted)]">Source: {explanation.source}</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** Shared "issue explanation" grid: What is it / Why it matters / SEO impact /
+ * User impact / Recommended fix. Was independently re-typed in HeadingsView,
+ * PerformanceView (ImageIssueDetail), and LinksView (IssueDetail) — the copy
+ * had already drifted ("why it matters" vs "why is it important?") before
+ * this was consolidated. `fields` lets callers insert extra cells (LinksView
+ * adds Root Cause / Technical Details) while keeping one shared layout. */
+export function IssueExplanationGrid({
+  header,
+  fields,
+  recommendedFix,
+  htmlExample,
+}: {
+  header?: { issueName: string; severity: string; color: string };
+  fields: { label: string; value: ReactNode }[];
+  recommendedFix: ReactNode;
+  htmlExample?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-3 text-sm">
+      {header ? (
+        <div className="flex items-center gap-2">
+          <span
+            className="rounded-full px-2 py-0.5 text-xs font-semibold"
+            style={{ color: header.color, backgroundColor: `${header.color}18` }}
+          >
+            {header.issueName}
+          </span>
+          <span className="text-xs text-[var(--seo-muted)]">Severity: {header.severity}</span>
+        </div>
+      ) : null}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {fields.map((f, i) => (
+          <div key={i}>
+            <h5 className="text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">{f.label}</h5>
+            <p className="text-[var(--seo-text)]">{f.value}</p>
+          </div>
+        ))}
+      </div>
+      <div>
+        <h5 className="text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">Recommended Fix</h5>
+        <p className="text-[var(--seo-text)]">{recommendedFix}</p>
+        {htmlExample ? (
+          <pre className="mt-1 overflow-x-auto rounded-lg bg-[var(--seo-card-hover)] p-2 text-xs text-[var(--seo-subheading)]">
+            {htmlExample}
+          </pre>
         ) : null}
       </div>
     </div>

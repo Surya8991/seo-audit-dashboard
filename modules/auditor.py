@@ -80,11 +80,16 @@ def validate_audit_url(url: str) -> tuple[bool, str]:
         return False, "Invalid URL format."
 
 
-def safe_get(url: str, *, max_redirects: int = 10, **kwargs):
-    """SSRF-safe `requests.get`: follows redirects manually, re-validating the
-    initial URL and every hop with `validate_audit_url`, so a public URL that
-    301s to an internal/metadata host is blocked mid-chain instead of being
-    fetched. Returns the final requests.Response with `.history` populated.
+def safe_request(method, url: str, *, max_redirects: int = 10, **kwargs):
+    """SSRF-safe fetch: follows redirects manually, re-validating the initial
+    URL and every hop with `validate_audit_url` before it's requested, so a
+    public URL that 301s to an internal/metadata host is blocked mid-chain
+    instead of being fetched. `method` is any `requests`-shaped callable
+    (`requests.get`, `requests.head`, or a `requests.Session`'s bound
+    `.get`/`.head`), so callers that need connection reuse (a `Session`) or a
+    HEAD-first strategy (image/link size- and reachability-checks) can share
+    this instead of each hand-rolling their own redirect loop. Returns the
+    final `requests.Response` with `.history` populated.
 
     Raises `BlockedURLError` if any hop fails validation, and
     `requests.TooManyRedirects` past `max_redirects`.
@@ -98,7 +103,7 @@ def safe_get(url: str, *, max_redirects: int = 10, **kwargs):
         ok, msg = validate_audit_url(current)
         if not ok:
             raise BlockedURLError(msg)
-        resp = requests.get(current, **kwargs)
+        resp = method(current, **kwargs)
         if resp.is_redirect and resp.headers.get("Location"):
             history.append(resp)
             current = urljoin(current, resp.headers["Location"])
@@ -106,6 +111,11 @@ def safe_get(url: str, *, max_redirects: int = 10, **kwargs):
         resp.history = history
         return resp
     raise requests.TooManyRedirects(f"Exceeded {max_redirects} redirects")
+
+
+def safe_get(url: str, *, max_redirects: int = 10, **kwargs):
+    """SSRF-safe `requests.get`; see `safe_request`."""
+    return safe_request(requests.get, url, max_redirects=max_redirects, **kwargs)
 
 
 HEADERS = {

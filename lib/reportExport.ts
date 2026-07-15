@@ -20,17 +20,11 @@
 //    so an unusually large export fails with a clear, actionable message
 //    instead of a bare 413.
 
+import { scoreLabel } from "@/lib/format";
 import type { AuditResult, Issue } from "@/lib/types";
 
 // Leaves headroom under Vercel's ~4.5MB serverless request-body limit.
 export const MAX_EXPORT_PAYLOAD_BYTES = 4 * 1024 * 1024;
-
-function scoreLabel(score: number): string {
-  if (score >= 90) return "Excellent";
-  if (score >= 75) return "Good";
-  if (score >= 50) return "Needs Attention";
-  return "Critical";
-}
 
 const CSV_COLUMNS = [
   "URL", "Audit Type", "Status Code", "SEO Score", "Score Label", "Response Time (s)",

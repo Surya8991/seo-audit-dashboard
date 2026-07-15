@@ -7,15 +7,16 @@ import { Card, EmptyState, PageHeader, ScoreBadge, ScoreCircle, StatusPill } fro
 import { ExportBar } from "@/components/ExportBar";
 import { allIssuesOf, avgScore } from "@/lib/aggregate";
 import { difficultyBreakdown } from "@/lib/difficulty";
-import { severityColor } from "@/lib/format";
+import { downloadCsv, severityColor } from "@/lib/format";
+import { getBaseDomain } from "@/lib/linkAnalysis";
 import type { AuditResult } from "@/lib/types";
 
+// Shares lib/linkAnalysis.ts's www-stripping so a sitewide audit groups
+// www.example.com and example.com as one domain here too — they used to
+// diverge (this page didn't strip www, the Links tab did), splitting one
+// site's results into two "domain" groups.
 function hostOf(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
+  return getBaseDomain(url) || url;
 }
 
 function pathnameOf(url: string): string {
@@ -87,6 +88,7 @@ export default function ResultsPage() {
   const [sortMode, setSortMode] = useState<SortMode>("score-asc");
   const [confirmClear, setConfirmClear] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [h1ReportOpen, setH1ReportOpen] = useState(false);
 
   useEffect(() => {
     if (!navFilter) return;
@@ -132,6 +134,14 @@ export default function ResultsPage() {
   function openDetail(r: AuditResult) {
     setSelectedUrlIndex(results.indexOf(r));
     router.push("/detail");
+  }
+
+  function exportSiteH1Csv() {
+    const rows = [["URL", "H1 Text", "H1 Count"]];
+    for (const r of results) {
+      rows.push([r.url, r.heading_detail?.h1_text || "", String(r.heading_detail?.counts?.h1 ?? 0)]);
+    }
+    downloadCsv("site-h1-report.csv", rows);
   }
 
   // Sitewide rollup: only meaningful when more than one URL was audited.
@@ -221,6 +231,55 @@ export default function ResultsPage() {
         </Card>
       ) : null}
 
+      {/* Sitewide (cross-URL) concept, moved here from the per-URL Detail
+          page's Headings tab where it was organizationally out of place —
+          a report iterating every audited URL doesn't belong on a single
+          URL's drill-down page. */}
+      {results.length > 1 ? (
+        <Card className="mb-4 overflow-hidden p-0">
+          <button
+            type="button"
+            onClick={() => setH1ReportOpen((v) => !v)}
+            className="flex w-full items-center justify-between gap-3 px-5 py-3 text-left"
+          >
+            <span className="flex items-center gap-2">
+              <span className={`text-[var(--seo-muted)] transition-transform ${h1ReportOpen ? "rotate-90" : ""}`}>▸</span>
+              <span className="text-sm font-semibold text-[var(--seo-subheading)]">Sitewide H1 Report</span>
+            </span>
+          </button>
+          {h1ReportOpen ? (
+            <div className="overflow-x-auto border-t border-[var(--seo-border)]">
+              <div className="flex justify-end p-3">
+                <button
+                  onClick={exportSiteH1Csv}
+                  className="rounded-lg border border-[var(--seo-border-strong)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--seo-card-hover)]"
+                >
+                  Export CSV
+                </button>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--seo-border)] bg-[var(--table-header-bg)] text-left text-xs uppercase tracking-wide text-[var(--seo-muted)]">
+                    <th className="px-4 py-3">URL</th>
+                    <th className="px-4 py-3">H1 Text</th>
+                    <th className="px-4 py-3">H1 Count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {results.map((res) => (
+                    <tr key={res.url} className="border-b border-[var(--table-row-border)]">
+                      <td className="max-w-xs truncate px-4 py-3">{res.url}</td>
+                      <td className="px-4 py-3">{res.heading_detail?.h1_text || <em>none</em>}</td>
+                      <td className="px-4 py-3">{res.heading_detail?.counts?.h1 ?? 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </Card>
+      ) : null}
+
       <Card className="mb-4">
         <div className="flex flex-wrap items-end gap-6">
           <div className="min-w-[200px] flex-1">
@@ -273,26 +332,9 @@ export default function ResultsPage() {
         </div>
       </Card>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <ExportBar results={results} />
-        <button
-          type="button"
-          onClick={() => {
-            if (!confirmClear) {
-              setConfirmClear(true);
-              return;
-            }
-            clearAll();
-            setConfirmClear(false);
-          }}
-          onBlur={() => setConfirmClear(false)}
-          className="ml-auto rounded-lg border border-[var(--seo-error-border)] px-3 py-1.5 text-sm font-medium text-[var(--seo-error)] hover:bg-[var(--seo-error-bg)]"
-        >
-          {confirmClear ? "Confirm clear all results?" : "Clear All Results"}
-        </button>
-      </div>
+      <ExportBar results={filtered} totalCount={results.length} />
 
-      <div className="flex flex-col gap-4">
+      <div className="mb-4 flex flex-col gap-4">
         {groups.map((g) => {
           const isCollapsed = collapsed[g.host];
           return (
@@ -376,6 +418,26 @@ export default function ResultsPage() {
             </Card>
           );
         })}
+      </div>
+
+      {/* Destructive action, deliberately separated from the filter/export
+          controls above so it isn't a stray click away from routine actions. */}
+      <div className="mt-6 flex justify-end border-t border-[var(--seo-border)] pt-4">
+        <button
+          type="button"
+          onClick={() => {
+            if (!confirmClear) {
+              setConfirmClear(true);
+              return;
+            }
+            clearAll();
+            setConfirmClear(false);
+          }}
+          onBlur={() => setConfirmClear(false)}
+          className="rounded-lg border border-[var(--seo-error-border)] px-3 py-1.5 text-sm font-medium text-[var(--seo-error)] hover:bg-[var(--seo-error-bg)]"
+        >
+          {confirmClear ? "Confirm clear all results?" : "Clear All Results"}
+        </button>
       </div>
     </div>
   );
