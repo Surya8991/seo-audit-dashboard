@@ -20,105 +20,11 @@ _GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 _DEFAULT_MODEL = "llama-3.1-8b-instant"
 _MAX_AUDIT_CHARS = 8000
 
-# Chatbot conversation bounds: this is a per-request Groq call (no server-side
-# session), so the client resends the running history each turn. Cap both the
-# number of turns and total size to keep requests small and bound token cost.
-_MAX_CHAT_TURNS = 20
-_MAX_CHAT_CONTEXT_CHARS = 4000
-
-_APP_HELP_SYSTEM_PROMPT = """You are the in-app assistant for the SEO Technical Audit Dashboard.
-Help users understand the app and their SEO audit results. Be concise and direct.
-
-What this app does: audits one or many URLs for technical SEO issues (crawlability,
-on-page, site health) and reports a 0-100 score, a 35-check technical checklist grouped
-into Crawlability / On-Page / Site Health, per-issue severity + fix effort (Easy/Medium/Hard),
-broken links, image SEO, heading structure, mobile-friendliness, and PageSpeed performance.
-
-Key pages: Dashboard (overview), Technical Audit (run a new audit: single URL, sitemap,
-crawl-from-URL, or CSV/paste a URL list), Results (list of audited URLs, filter/sort/export),
-Detail (per-URL drill-down with tabs: Overview, Technical, Issues, Links, Headings,
-Content & Images, Performance, Recommendations), Settings (theme, API keys).
-
-If the user asks something unrelated to this app or to SEO, answer briefly if you can,
-but steer back to what you can help with here. If you don't know a specific detail about
-the app, say so rather than guessing."""
-
-
-def _trim_chat_messages(messages: list[dict]) -> list[dict]:
-    """Keep only the most recent turns, then hard-cap total character budget."""
-    trimmed = messages[-_MAX_CHAT_TURNS:]
-    budget = _MAX_CHAT_CONTEXT_CHARS
-    out = []
-    for msg in reversed(trimmed):
-        content = str(msg.get("content", ""))[:budget]
-        if not content:
-            continue
-        budget -= len(content)
-        out.append({"role": msg.get("role", "user"), "content": content})
-        if budget <= 0:
-            break
-    return list(reversed(out))
-
-
-def chat_with_assistant(messages: list[dict], api_key: str, audit_context: dict | None = None,
-                         model: str = _DEFAULT_MODEL) -> dict:
-    """Multi-turn app-help / audit Q&A chat. `messages` is the running
-    conversation (each `{role: "user"|"assistant", content: str}`), oldest
-    first, NOT including the system prompt (that's added here).
-
-    `audit_context`, when provided, is a small summary of the currently
-    loaded audit (url, seo_score, top issue titles, and optionally `kb_notes`
-    — matching entries from the app's own Common Issues KB, the same
-    what-is-it/recommended-fix text that powers the "Learn more" expansion in
-    the UI) so the assistant answers from the app's grounded explanations
-    instead of the model's general knowledge for issues the KB covers.
-
-    Returns {ok, reply, model} or {ok: False, error}.
-    """
-    if not api_key:
-        return {"ok": False, "error": "Groq API key not configured"}
-    if not messages:
-        return {"ok": False, "error": "No message provided"}
-
-    system_msg = _APP_HELP_SYSTEM_PROMPT
-    if audit_context:
-        ctx_url = str(audit_context.get("url") or "")
-        ctx_score = audit_context.get("seo_score")
-        ctx_issues = audit_context.get("top_issues") or []
-        ctx_lines = [f"- {str(i)[:200]}" for i in ctx_issues[:10]]
-        context_block = (
-            f"\n\nThe user currently has an audit loaded for {ctx_url or 'a URL'} "
-            f"(SEO score: {ctx_score if ctx_score is not None else 'unknown'}/100). "
-            f"Its top issues:\n" + ("\n".join(ctx_lines) if ctx_lines else "(none)")
-        )
-
-        kb_notes = audit_context.get("kb_notes") or []
-        if kb_notes:
-            kb_lines = []
-            for note in kb_notes[:5]:
-                if not isinstance(note, dict):
-                    continue
-                title = str(note.get("issue", ""))[:200]
-                what_is_it = str(note.get("whatIsIt", ""))[:300]
-                fix = str(note.get("recommendedFix", ""))[:300]
-                kb_lines.append(f"- {title}: {what_is_it} Fix: {fix}")
-            if kb_lines:
-                context_block += (
-                    "\n\nGrounded explanations for some of these issues (from this "
-                    "app's own knowledge base, prefer these over general knowledge):\n"
-                    + "\n".join(kb_lines)
-                )
-
-        system_msg += context_block[:_MAX_CHAT_CONTEXT_CHARS]
-
-    chat_messages = [{"role": "system", "content": system_msg}, *_trim_chat_messages(messages)]
-
-    try:
-        reply = _chat(chat_messages, api_key, model=model, temperature=0.5, max_tokens=500)
-        return {"ok": True, "reply": reply, "model": model}
-    except Exception as exc:
-        logger.warning("chat_with_assistant failed: %s", exc)
-        return {"ok": False, "error": _safe_error(exc)}
+# NOTE: the multi-turn chatbot (`chat_with_assistant`, `_trim_chat_messages`,
+# the app-help system prompt) and its floating ChatWidget were removed in
+# Session 24. The AI layer is now focused on two grounded, per-page tasks:
+# `explain_audit` (the audit summary) and `suggest_fix` (personalized fix
+# drafts). Do not reintroduce a general-purpose chatbot without discussing it.
 
 
 def _safe_error(exc: Exception) -> str:
@@ -304,32 +210,49 @@ def explain_audit(all_issues: list[dict], seo_score: float, api_key: str,
 
 
 # ── Specific fix suggestions ─────────────────────────────────────────────────
-# Unlike explain_audit (a narrative summary) and chat_with_assistant (open Q&A),
-# this drafts an actual ready-to-use replacement value for a well-defined,
-# narrow set of issue types — "add a meta description" becomes a real
-# 150-160 char draft, not just advice. Only supports issue titles matching
-# _FIX_TARGET_PATTERNS; anything else returns ok:False so the caller can hide
-# the "Suggest a fix" action rather than show a useless generic reply.
+# Unlike explain_audit (a narrative summary), this drafts an actual ready-to-use
+# replacement value for a well-defined set of issue types — "add a meta
+# description" becomes a real 150-160 char draft grounded in THIS page's content,
+# not generic advice. Only supports issue titles matching _FIX_TARGET_PATTERNS;
+# anything else returns ok:False so the caller can hide the "Suggest a fix"
+# action rather than show a useless generic reply. Keep this list in sync with
+# lib/fixSuggestable.ts's FIX_TARGET_PATTERNS.
 
 _FIX_TARGET_PATTERNS: list[tuple[re.Pattern, str]] = [
-    (re.compile(r"missing meta title|meta title too (short|long)", re.I), "title"),
+    (re.compile(r"missing meta title|meta title too (short|long)|title tag", re.I), "title"),
     (re.compile(r"missing meta description|meta description too (short|long)", re.I), "description"),
-    (re.compile(r"missing h1|h1 heading is too (short|long)", re.I), "h1"),
+    (re.compile(r"missing h1|h1 heading is too (short|long)|multiple h1", re.I), "h1"),
+    (re.compile(r"open graph|missing og:|social preview|twitter card", re.I), "og"),
+    (re.compile(r"missing alt|empty alt text|generic alt text", re.I), "alt"),
 ]
 
 _FIX_TARGET_INSTRUCTIONS = {
     "title": (
         "Draft a page <title> tag, 30-60 characters, that accurately and specifically "
         "describes the page, includes the likely primary keyword naturally, and would "
-        "stand out in a search results list."
+        "stand out in a search results list. Output only the title text."
     ),
     "description": (
         "Draft a meta description, 150-160 characters, that summarizes the page and gives "
-        "a compelling, specific reason to click through from search results."
+        "a compelling, specific reason to click through from search results. Output only "
+        "the description text."
     ),
     "h1": (
         "Draft a single H1 heading, roughly 20-70 characters, that clearly states the "
-        "page's main topic."
+        "page's main topic. Output only the heading text."
+    ),
+    "og": (
+        "Draft Open Graph + Twitter Card meta tags for a compelling social-media share "
+        "preview of THIS page. Output the ready-to-paste HTML: an og:title (<=60 chars), "
+        "og:description (<=110 chars), og:type, twitter:card=summary_large_image, "
+        "twitter:title and twitter:description, grounded in the page's real title and "
+        "content. Output only the <meta> tags."
+    ),
+    "alt": (
+        "Write concise, descriptive alt text (under ~125 characters, no 'image of' "
+        "prefix, no keyword stuffing) appropriate for the key content images on THIS "
+        "page, based on the page's actual topic. Give 2-3 example alt-text strings the "
+        "author can adapt, each on its own line."
     ),
 }
 
@@ -386,12 +309,24 @@ def suggest_fix(issue_title: str, page_context: dict, api_key: str, model: str =
     try:
         reply = _chat(
             [{"role": "system", "content": system_msg}, {"role": "user", "content": user_msg}],
-            api_key, model=model, max_tokens=300, json_mode=True,
+            api_key, model=model, max_tokens=450, json_mode=True,
         )
         try:
             data = json.loads(reply)
             suggestion = str(data.get("suggestion", "")).strip()
             rationale = str(data.get("rationale", "")).strip()
+            # Some models (seen on the multi-line og/alt outputs) double-wrap:
+            # they put ANOTHER {"suggestion": ..., "rationale": ...} JSON object
+            # inside the `suggestion` string. Unwrap one level so the user gets
+            # the clean draft, not escaped JSON.
+            if suggestion.startswith("{") and '"suggestion"' in suggestion:
+                try:
+                    inner = json.loads(suggestion)
+                    if isinstance(inner, dict) and inner.get("suggestion"):
+                        suggestion = str(inner.get("suggestion", "")).strip()
+                        rationale = rationale or str(inner.get("rationale", "")).strip()
+                except (json.JSONDecodeError, TypeError):
+                    pass
         except (json.JSONDecodeError, AttributeError, TypeError):
             suggestion, rationale = reply.strip(), ""
         if not suggestion:

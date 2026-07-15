@@ -18,8 +18,14 @@ describe("detectFixTarget", () => {
     expect(detectFixTarget("H1 heading is too short (12 chars)")).toBe("h1");
   });
 
+  it("matches Open Graph and alt-text issues", () => {
+    expect(detectFixTarget("Missing Open Graph Tags: og:title, og:description")).toBe("og");
+    expect(detectFixTarget("Missing alt text on 3 image(s)")).toBe("alt");
+    expect(detectFixTarget("Empty alt text on 2 image(s) (verify decorative)")).toBe("alt");
+  });
+
   it("returns null for unsupported issues", () => {
     expect(detectFixTarget("Broken Internal Link")).toBeNull();
-    expect(detectFixTarget("Missing Alt Text")).toBeNull();
+    expect(detectFixTarget("Missing Cache-Control Header")).toBeNull();
   });
 });

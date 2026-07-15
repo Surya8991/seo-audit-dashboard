@@ -2,12 +2,14 @@
 // The client needs this too (not just the backend) so the UI can decide
 // whether to show the "Suggest a fix" action without spending an API call
 // just to find out it isn't supported for this issue.
-export type FixTarget = "title" | "description" | "h1";
+export type FixTarget = "title" | "description" | "h1" | "og" | "alt";
 
 const FIX_TARGET_PATTERNS: [RegExp, FixTarget][] = [
-  [/missing meta title|meta title too (short|long)/i, "title"],
+  [/missing meta title|meta title too (short|long)|title tag/i, "title"],
   [/missing meta description|meta description too (short|long)/i, "description"],
-  [/missing h1|h1 heading is too (short|long)/i, "h1"],
+  [/missing h1|h1 heading is too (short|long)|multiple h1/i, "h1"],
+  [/open graph|missing og:|social preview|twitter card/i, "og"],
+  [/missing alt|empty alt text|generic alt text/i, "alt"],
 ];
 
 export function detectFixTarget(issueTitle: string): FixTarget | null {

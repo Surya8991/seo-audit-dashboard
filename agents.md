@@ -39,7 +39,8 @@ prior standalone Streamlit SEO audit tool ported in on top.
   search, "+ New Audit", a session pill, dark-mode toggle), collapsing into a
   hamburger dropdown below `md`. Replaced the old fixed-width left sidebar
   (`AppShell.tsx` used to render `<aside>` directly; now it's just
-  `<Navbar/>` + `<main>` + `<ChatWidget/>`). The old sidebar was always
+  `<Navbar/>` + a centered `<main class="mx-auto max-w-6xl">`. The floating
+  `<ChatWidget/>` that used to sit here was removed in Session 24). The old sidebar was always
   dark regardless of light/dark mode; the navbar uses the same
   `--seo-card-bg`/`--seo-border` tokens as the rest of the app so nav chrome
   now follows the theme toggle too (`--seo-sidebar-*` tokens were removed
@@ -108,10 +109,13 @@ prior standalone Streamlit SEO audit tool ported in on top.
     own `_handle_*` function with its own try/except preserving the original
     per-endpoint error message; `_ACTIONS` maps `action` string → function.
   - `api/ai.py` (`maxDuration` 30) — **AI layer** (`modules/ai_assist.py`,
-    all Groq), actions `"summary"`, `"chat"`, `"fix-suggestion"`, plus a
+    all Groq), actions `"summary"` and `"fix-suggestion"`, plus a
     plain `GET` for config-status (key-presence only, no action needed since
-    it's the only `GET` in the group). All three POST actions go through the
-    shared `_chat()` HTTP helper (3x retry on 429/5xx, optional
+    it's the only `GET` in the group). **The `"chat"` action + the floating
+    `ChatWidget` were removed in Session 24** — the AI is now focused on the
+    audit summary and personalized per-page fix drafts; do not reintroduce a
+    general-purpose chatbot without discussing it. Both POST actions go through
+    the shared `_chat()` HTTP helper (3x retry on 429/5xx, optional
     `json_mode=True` requests Groq's `response_format: json_object` with an
     automatic one-retry fallback to plain text if the model/account 400s on
     it).
@@ -126,29 +130,16 @@ prior standalone Streamlit SEO audit tool ported in on top.
       (sitewide rollup), cached per `cacheKey` in `AuditContext`'s
       `aiSummaryCache` (see `lib/aiSummaryCache.ts::fingerprintForSummary`)
       so reopening unchanged data doesn't re-spend an API call.
-    - `"chat"` → `chat_with_assistant(messages, api_key, audit_context=None)`:
-      multi-turn chatbot, backing the global `components/ChatWidget.tsx`
-      floating widget (rendered in `AppShell.tsx`, on every page). Defaults
-      to app-help Q&A; on `/results`/`/detail` with results loaded, attaches
-      `auditContext` (url/score/top issues) **plus** `kb_notes` — matched
-      entries from `lib/commonIssuesKB.ts` for the top issues
-      (`ChatWidget.tsx::buildKbNotes`), so the assistant answers from the
-      app's own curated explanations instead of general model knowledge for
-      issues the KB covers. Conversation history is resent each turn (no
-      server-side session) and bounded on both ends
-      (`_MAX_CHAT_TURNS`/`_MAX_CHAT_CONTEXT_CHARS` in `ai_assist.py`,
-      `MAX_MESSAGES`/`MAX_MESSAGE_CHARS` in `api/ai.py`). The widget
-      progressively reveals a reply client-side (`ChatWidget.tsx::startReveal`,
-      triggered from the `send()` handler, not a `useEffect`, to dodge both
-      a visual flash and the `react-hooks/set-state-in-effect` lint rule) —
-      true server-side token streaming isn't reliably supported on Vercel's
-      classic Python (`BaseHTTPRequestHandler`) runtime these `api/*.py`
-      files use.
     - `"fix-suggestion"` → `suggest_fix(issue_title, page_context, api_key)`:
       drafts an actual ready-to-use replacement (e.g. a real meta
-      description) for a **narrow, well-defined set of issue types** — see
-      `_FIX_TARGET_PATTERNS`/`detect_fix_target` (title/description/H1
-      only). `lib/fixSuggestable.ts::detectFixTarget` mirrors the same
+      description) for a **well-defined set of issue types** — see
+      `_FIX_TARGET_PATTERNS`/`detect_fix_target`: **title, description, H1,
+      Open Graph/Twitter tags, and image alt-text** (expanded from the
+      original 3 in Session 24 so more issues get a personalized, page-grounded
+      draft instead of only the generic KB explanation). The og/alt outputs are
+      multi-line; `suggest_fix` defensively unwraps a double-nested JSON reply
+      (some models wrap the answer in a second `{"suggestion": …}` layer).
+      `lib/fixSuggestable.ts::detectFixTarget` mirrors the same
       patterns client-side so `components/ui.tsx::IssueRow` only shows "✨
       Suggest a fix" for issues it can actually draft for, without a
       round-trip just to find out. Only wired up where a single concrete
@@ -436,9 +427,10 @@ need a nonce (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`,
 
 ## Env vars
 - `PSI_API_KEY` (optional): PageSpeed Insights quota
-- `GROQ_API_KEY` (optional): server-side default for the AI Summary feature
-  AND the chatbot (`api/ai.py`'s "chat" action) — both share the same key; users can also
-  paste their own key in Settings (stored in browser localStorage only)
+- `GROQ_API_KEY` (optional): server-side default for the AI features — the
+  audit **summary** and the personalized **fix suggestions** (`api/ai.py`'s
+  `"summary"` / `"fix-suggestion"` actions); users can also paste their own key
+  in Settings (stored in browser localStorage only)
 
 ## Testing
 ```bash
@@ -568,6 +560,20 @@ Edstellar sitemap/pages and take 30+ seconds. Opt in with `RUN_LIVE_TESTS=1`.
   emit nothing rather than assert a claim that may be false. This is the core
   "don't show issues on pages that don't have them" principle from the Session 22
   audit.
+- **Page-type classification is URL-pattern-only** (`modules/auditor.py::
+  detect_page_type`). The per-page-type auditors (`course_auditor`,
+  `blog_auditor`) only run when a page is classified `course`/`blog`; getting
+  that wrong fires page-type-specific checks ("Missing Course Overview / CTA /
+  Schema", "Missing Author") on pages that aren't that type. The old
+  content-signal fallback (counting words like "enroll"/"curriculum") was
+  measurably backwards on real data (a genuine edstellar `/course/…` page had 2
+  course signals; a non-course `/coaching-solutions` service page had 3), so it
+  was removed. Classify via URL patterns only; root path is always `general`. Do
+  NOT re-add a content-signal fallback.
+- **All displayed timestamps are IST** — `lib/format.ts::formatDate` renders in
+  `Asia/Kolkata` with a fixed `en-IN` locale. The fixed locale+zone is also what
+  keeps it deterministic across the server/client render (avoids a hydration
+  mismatch); don't switch it back to the viewer's `toLocaleString()`.
 - **Sitewide issue attribution:** `lib/aggregate.ts::issuesByTitle` groups issues
   by title while KEEPING the affected-page URLs, so the Results rollup can list
   which pages each issue hits (not just "N pages"). `modules/ai_assist.py::

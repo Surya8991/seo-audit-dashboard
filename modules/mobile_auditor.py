@@ -574,15 +574,13 @@ def _build_issues(checks, summary):
             "effort": "Medium",
         })
 
-    if check_map.get("image_dimensions", {}).get("status") == "warning":
-        issues.append({
-            "issue": "Images missing explicit width/height dimensions",
-            "category": "Performance",
-            "severity": "Medium",
-            "recommendation": "Add width and height attributes to all images to reduce Cumulative Layout Shift (CLS).",
-            "impact_score": 6,
-            "effort": "Low",
-        })
+    # NOTE: the "images missing width/height" issue is intentionally NOT emitted
+    # here — modules/image_auditor.py already emits a more precise, counted
+    # version ("N image(s) missing width/height dimensions", same category /
+    # severity / CLS recommendation). Emitting both double-counted one problem
+    # against the score and showed two near-identical rows. The mobile
+    # `image_dimensions` CHECK still contributes to the mobile checklist status;
+    # only the duplicate all_issues row is dropped.
 
     if check_map.get("content_wider_screen", {}).get("status") == "warning":
         issues.append({

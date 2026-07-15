@@ -14,7 +14,7 @@ export default function SettingsPage() {
   const [confirmClear, setConfirmClear] = useState(false);
 
   return (
-    <div className="max-w-2xl">
+    <div className="mx-auto max-w-2xl">
       <PageHeader icon={<SettingsIcon size={18} />} title="Settings" />
 
       <Card className="mb-4">

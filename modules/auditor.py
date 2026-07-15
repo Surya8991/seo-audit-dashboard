@@ -550,19 +550,36 @@ def analyze_redirect_chain(redirect_history):
 
 
 def detect_page_type(url, soup):
+    """Classify a page as course / blog / general so the per-page-type auditors
+    (course_auditor, blog_auditor) only run where they apply. Getting this wrong
+    fires page-type-specific checks ("Missing Course Overview / CTA", "Missing
+    Course Schema") on pages that aren't that type — a false positive.
+    """
     url_lower = url.lower()
-    if any(x in url_lower for x in ["/course", "/courses", "/training", "/program", "/workshop", "/bootcamp"]):
+    path = urlparse(url_lower).path.strip("/")
+
+    # The homepage / site root is never an individual course or blog POST. A
+    # training company's homepage is full of course vocabulary (enroll,
+    # certification, instructor), which used to mis-classify it as "course" and
+    # run per-course-page checks on it. Root is always "general".
+    if path == "":
+        return "general"
+
+    # Classification is URL-pattern-only. The former content-signal fallback
+    # (counting words like "curriculum"/"enroll") was measurably UNreliable on
+    # real data: on edstellar, a genuine course page (/course/…-training) had
+    # only 2 course signals while a non-course service page (/coaching-solutions)
+    # had 3 — so the fallback classified backwards, firing per-course-page checks
+    # ("Missing Course Overview / CTA / Schema") on service pages. Real course
+    # and blog pages have clear URL patterns (edstellar: 1,697 /course/… pages,
+    # /blog/… posts), which the checks below catch reliably. When a site has no
+    # such pattern, defaulting to "general" (no page-type-specific checks) is the
+    # correct, false-positive-free behavior. `soup` is kept in the signature for
+    # callers/back-compat.
+    if any(x in url_lower for x in ["/course/", "/courses/", "/training/", "/program/", "/workshop/", "/bootcamp/"]):
         return "course"
-    if any(x in url_lower for x in ["/blog", "/blogs", "/article", "/post", "/news", "/insight"]):
+    if any(x in url_lower for x in ["/blog/", "/blogs/", "/article/", "/post/", "/news/", "/insight/"]):
         return "blog"
-    if soup:
-        text = soup.get_text().lower()
-        course_signals = ["curriculum", "syllabus", "enroll", "instructor", "certification", "learning objectives"]
-        blog_signals   = ["published", "author:", "read time", "tags:", "share this article"]
-        if sum(1 for s in course_signals if s in text) > sum(1 for s in blog_signals if s in text):
-            return "course"
-        if sum(1 for s in blog_signals if s in text) >= 2:
-            return "blog"
     return "general"
 
 

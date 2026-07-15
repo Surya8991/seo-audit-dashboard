@@ -6,15 +6,9 @@ from http.server import BaseHTTPRequestHandler
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from modules._http import read_json_body, require_str, send_json  # noqa: E402
-from modules.ai_assist import chat_with_assistant, explain_audit, suggest_fix  # noqa: E402
+from modules.ai_assist import explain_audit, suggest_fix  # noqa: E402
 
 logger = logging.getLogger(__name__)
-
-# Same reasoning as ai_assist._MAX_CHAT_TURNS/_MAX_CHAT_CONTEXT_CHARS, enforced
-# again at the request boundary so an oversized payload is rejected outright
-# rather than silently trimmed.
-MAX_MESSAGES = 40
-MAX_MESSAGE_CHARS = 4000
 
 
 def _handle_summary(handler, payload):
@@ -33,36 +27,6 @@ def _handle_summary(handler, payload):
     except Exception:  # noqa: BLE001
         logger.exception("ai.py (summary) request failed")
         send_json(handler, 500, {"ok": False, "error": "Internal error while generating the summary."})
-
-
-def _handle_chat(handler, payload):
-    try:
-        messages = payload.get("messages")
-        if not isinstance(messages, list) or not messages:
-            send_json(handler, 400, {"ok": False, "error": "messages is required"})
-            return
-        if len(messages) > MAX_MESSAGES:
-            send_json(handler, 400, {"ok": False, "error": f"Too many messages (max {MAX_MESSAGES})"})
-            return
-        for m in messages:
-            if not isinstance(m, dict) or not isinstance(m.get("content"), str):
-                send_json(handler, 400, {"ok": False, "error": "Each message needs a string content"})
-                return
-            if len(m["content"]) > MAX_MESSAGE_CHARS:
-                send_json(handler, 400, {"ok": False, "error": f"Message too long (max {MAX_MESSAGE_CHARS} chars)"})
-                return
-
-        api_key = payload.get("apiKey") or os.environ.get("GROQ_API_KEY")
-        audit_context = payload.get("auditContext")
-        if not isinstance(audit_context, dict):
-            audit_context = None
-
-        result = chat_with_assistant(messages, api_key, audit_context=audit_context)
-        status = 200 if result.get("ok") else 400
-        send_json(handler, status, result)
-    except Exception:  # noqa: BLE001
-        logger.exception("ai.py (chat) request failed")
-        send_json(handler, 500, {"ok": False, "error": "Internal error while chatting."})
 
 
 def _handle_fix_suggestion(handler, payload):
@@ -84,16 +48,17 @@ def _handle_fix_suggestion(handler, payload):
         send_json(handler, 500, {"ok": False, "error": "Internal error while generating the fix."})
 
 
-# Consolidates what used to be 4 separate api/*.py files (ai-summary, chat,
+# Consolidates what used to be separate api/*.py files (ai-summary,
 # fix-suggestion, config-status) into one Vercel serverless function — see
 # api/audit-pipeline.py's module docstring-equivalent comment for why
 # (Vercel's Python builder reinstalls the full requirements.txt per function,
 # so fewer functions means fewer ~14s installs at build time). Dispatch is by
 # an "action" field in the POST body; callers POST to /api/ai with
-# {"action": "summary"|"chat"|"fix-suggestion", ...}.
+# {"action": "summary"|"fix-suggestion", ...}. (The "chat" action + floating
+# ChatWidget were removed in Session 24 — the AI is now focused on the
+# per-page/per-issue personalized fix suggestions and the audit summary.)
 _ACTIONS = {
     "summary": _handle_summary,
-    "chat": _handle_chat,
     "fix-suggestion": _handle_fix_suggestion,
 }
 

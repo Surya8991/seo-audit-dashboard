@@ -64,7 +64,17 @@ export default async function RootLayout({
   return (
     <html lang="en" className={`h-full antialiased ${inter.variable} ${jetbrainsMono.variable}`}>
       <head>
-        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        {/* Browsers strip the `nonce` attribute from the DOM after applying the
+            CSP (a security measure), so the client reads nonce="" while the
+            server rendered the real per-request nonce from proxy.ts — a
+            well-known false-positive hydration mismatch. suppressHydrationWarning
+            silences it; the script itself is applied correctly (CSP allows the
+            nonce, the theme initializes). */}
+        <script
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: themeInitScript }}
+        />
       </head>
       <body className="min-h-full flex flex-col bg-[var(--seo-app-bg)] text-[var(--seo-text)]">
         <AuditProvider>

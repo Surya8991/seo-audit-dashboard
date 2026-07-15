@@ -27,10 +27,22 @@ export function severityColor(severity: string): { text: string; bg: string } {
   return { text: "var(--sev-low)", bg: "var(--sev-low-bg)" };
 }
 
+// All displayed timestamps are rendered in IST (Asia/Kolkata) with a fixed
+// en-IN locale. Fixing both the time zone AND the locale (rather than using the
+// viewer's `toLocaleString()`) also makes the output deterministic between the
+// server render and the client, removing a hydration-mismatch source.
+const IST_DATE_FORMAT = new Intl.DateTimeFormat("en-IN", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "Asia/Kolkata",
+});
+
 export function formatDate(iso: string | null): string {
   if (!iso) return "N/A";
   try {
-    return new Date(iso).toLocaleString();
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return `${IST_DATE_FORMAT.format(d)} IST`;
   } catch {
     return iso;
   }
