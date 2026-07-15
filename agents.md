@@ -26,7 +26,10 @@ prior standalone Streamlit SEO audit tool ported in on top.
   table is now flat, sorted, with a Type column and Type filter — the category
   comes from `lib/pageCategory.ts::categorizeUrl(url, audit_type)`, keyed off the
   URL path segment (Course/Blog/Topic/Category/Tag/Type/Static/Home) with the
-  backend `audit_type` as a fallback.)
+  backend `audit_type` as a fallback. Session 26: the table is **full-width**
+  via the `.full-bleed` globals.css utility (spans the viewport, breaking out of
+  the centered `max-w-6xl`), the CHECKLIST and TOP ISSUE columns are **merged**
+  into one cell, and the URL column shows the **full URL** (`break-all`).)
   The former standalone `links`, `headings`, and `performance` pages are folded
   into `app/detail/page.tsx` as tabs backed by `components/detail/LinksView.tsx`,
   `HeadingsView.tsx`, and `PerformanceView.tsx`. Report export is NOT a page: it
@@ -141,9 +144,15 @@ prior standalone Streamlit SEO audit tool ported in on top.
       `_FIX_TARGET_PATTERNS`/`detect_fix_target`: **title, description, H1,
       Open Graph/Twitter tags, and image alt-text** (expanded from the
       original 3 in Session 24 so more issues get a personalized, page-grounded
-      draft instead of only the generic KB explanation). The og/alt outputs are
-      multi-line; `suggest_fix` defensively unwraps a double-nested JSON reply
-      (some models wrap the answer in a second `{"suggestion": …}` layer).
+      draft instead of only the generic KB explanation). **Single-value targets
+      (title/description/H1) use JSON mode; multi-line targets (og/alt) use PLAIN
+      TEXT** (`_JSON_FIX_TARGETS`) — forcing JSON around a multi-line Open Graph
+      block / several alt lines made models nest the payload or return an empty
+      `suggestion` ("didn't return a usable suggestion"), the Session 26 fix.
+      `suggest_fix` also strips markdown fences (`_strip_code_fence`), de-nests a
+      double-wrapped JSON reply object OR array (`_extract_fix_suggestion`), and
+      retries once as plain text if the first attempt is empty. Don't put og/alt
+      back into JSON mode.
       `lib/fixSuggestable.ts::detectFixTarget` mirrors the same
       patterns client-side so `components/ui.tsx::IssueRow` only shows "✨
       Suggest a fix" for issues it can actually draft for, without a

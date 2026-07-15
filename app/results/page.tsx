@@ -115,37 +115,39 @@ function ResultRow({ r, onOpen }: { r: AuditResult; onOpen: (r: AuditResult) => 
       onClick={() => onOpen(r)}
       className="cursor-pointer border-b border-[var(--table-row-border)] last:border-0 hover:bg-[var(--table-row-hover)]"
     >
-      <td className="max-w-xs truncate px-4 py-3 font-medium text-[var(--seo-subheading)]">
-        {pathnameOf(r.url)}
+      <td className="px-4 py-3 align-top font-medium text-[var(--seo-subheading)]">
+        <span className="break-all">{r.url}</span>
         {r.status_code && r.status_code !== 200 ? (
           <span className="ml-2 text-xs text-[var(--seo-error)]">{r.status_code}</span>
         ) : null}
       </td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-3 align-top">
         <TypeBadge url={r.url} auditType={r.audit_type} />
       </td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-3 align-top">
         <ScoreBadge score={r.seo_score ?? 0} />
       </td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-3 align-top">
+        <EffortChips result={r} />
+      </td>
+      {/* Merged "Checklist + top issue" cell: the pass/warn/fail summary and the
+          single highest-impact issue in one column (was two separate columns). */}
+      <td className="px-4 py-3 align-top">
         {cl ? (
-          <span className="flex items-center gap-1.5 text-xs">
+          <span className="flex flex-wrap items-center gap-1.5 text-xs">
             <StatusPill status="pass" /> {cl.pass}
             <StatusPill status="warning" /> {cl.warning}
             <StatusPill status="fail" /> {cl.fail}
           </span>
         ) : (
-          <span className="text-xs text-[var(--seo-muted)]">N/A</span>
+          <span className="text-xs text-[var(--seo-muted)]">Checklist N/A</span>
         )}
+        <div className="mt-1 text-[var(--seo-text-light)]">
+          {top || <span className="text-[var(--seo-success)]">No issues found</span>}
+        </div>
       </td>
-      <td className="px-4 py-3">
-        <EffortChips result={r} />
-      </td>
-      <td className="max-w-xs truncate px-4 py-3 text-[var(--seo-text-light)]">
-        {top || <span className="text-[var(--seo-success)]">No issues</span>}
-      </td>
-      <td className="px-4 py-3 text-right">
-        <span className="text-sm font-medium text-[var(--seo-accent)]">View →</span>
+      <td className="px-4 py-3 text-right align-top">
+        <span className="whitespace-nowrap text-sm font-medium text-[var(--seo-accent)]">View →</span>
       </td>
     </tr>
   );
@@ -466,34 +468,38 @@ export default function ResultsPage() {
 
       <ExportBar results={filtered} totalCount={results.length} />
 
-      <Card className="mb-4 overflow-hidden p-0">
-        {sortedRows.length === 0 ? (
-          <div className="px-4 py-10 text-center text-sm text-[var(--seo-muted)]">
-            No URLs match the current filters.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--seo-border)] bg-[var(--table-header-bg)] text-left text-xs uppercase tracking-wide text-[var(--seo-muted)]">
-                  <th className="px-4 py-2.5">URL</th>
-                  <th className="px-4 py-2.5">Type</th>
-                  <th className="px-4 py-2.5">Score</th>
-                  <th className="px-4 py-2.5">Checklist</th>
-                  <th className="px-4 py-2.5">Fix effort</th>
-                  <th className="px-4 py-2.5">Top issue</th>
-                  <th className="px-4 py-2.5" />
-                </tr>
-              </thead>
-              <tbody>
-                {sortedRows.map((r, idx) => (
-                  <ResultRow key={r.url + idx} r={r} onOpen={openDetail} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
+      {/* Full-bleed: the table spans the full viewport width (breaking out of the
+          page's centered max-width) so every column + full URLs are visible
+          without horizontal scroll. */}
+      <div className="full-bleed mb-4 px-4 md:px-8">
+        <Card className="overflow-hidden p-0">
+          {sortedRows.length === 0 ? (
+            <div className="px-4 py-10 text-center text-sm text-[var(--seo-muted)]">
+              No URLs match the current filters.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--seo-border)] bg-[var(--table-header-bg)] text-left text-xs uppercase tracking-wide text-[var(--seo-muted)]">
+                    <th className="px-4 py-2.5">URL</th>
+                    <th className="px-4 py-2.5">Type</th>
+                    <th className="px-4 py-2.5">Score</th>
+                    <th className="px-4 py-2.5">Fix effort</th>
+                    <th className="px-4 py-2.5">Checklist &amp; top issue</th>
+                    <th className="px-4 py-2.5" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedRows.map((r, idx) => (
+                    <ResultRow key={r.url + idx} r={r} onOpen={openDetail} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      </div>
 
       {/* Destructive action, deliberately separated from the filter/export
           controls above so it isn't a stray click away from routine actions. */}

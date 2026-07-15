@@ -193,23 +193,40 @@ def test_suggest_fix_returns_error_when_suggestion_empty(mock_chat):
 
 @patch("modules.ai_assist._chat")
 def test_suggest_fix_unwraps_double_nested_object(mock_chat):
-    # Some models put another {"suggestion": …} object inside the suggestion.
-    inner = json.dumps({"suggestion": "<meta property='og:title' content='X'/>", "rationale": "why"})
+    # A structured target (description) in JSON mode: some models double-wrap,
+    # putting another {"suggestion": …} object inside the suggestion string.
+    inner = json.dumps({"suggestion": "A crisp 155-char meta description.", "rationale": "why"})
     mock_chat.return_value = json.dumps({"suggestion": inner, "rationale": ""})
-    result = suggest_fix("Missing Open Graph Tags", {"url": "https://example.com/"}, api_key="fake-key")
+    result = suggest_fix("Missing Meta Description", {"url": "https://example.com/"}, api_key="fake-key")
     assert result["ok"] is True
-    assert result["suggestion"].startswith("<meta")
+    assert result["suggestion"] == "A crisp 155-char meta description."
     assert result["rationale"] == "why"
 
 
 @patch("modules.ai_assist._chat")
 def test_suggest_fix_unwraps_nested_array(mock_chat):
-    # The alt-text case: the model returns an ARRAY of {suggestion} objects.
-    arr = json.dumps([{"suggestion": "Alt one"}, {"suggestion": "Alt two"}])
+    # A structured target whose model reply nested an ARRAY inside `suggestion`.
+    arr = json.dumps([{"suggestion": "Line one"}, {"suggestion": "Line two"}])
     mock_chat.return_value = json.dumps({"suggestion": arr, "rationale": ""})
-    result = suggest_fix("Missing alt text on 2 image(s)", {"url": "https://example.com/"}, api_key="fake-key")
+    result = suggest_fix("Missing Meta Description", {"url": "https://example.com/"}, api_key="fake-key")
     assert result["ok"] is True
-    assert result["suggestion"] == "Alt one\nAlt two"
+    assert result["suggestion"] == "Line one\nLine two"
+
+
+@patch("modules.ai_assist._chat")
+def test_suggest_fix_og_uses_plain_text(mock_chat):
+    # Open Graph is a multi-line target: it is requested as PLAIN TEXT (not JSON),
+    # and a markdown code fence around it is stripped.
+    mock_chat.return_value = (
+        "```html\n<meta property=\"og:title\" content=\"X\"/>\n"
+        "<meta property=\"og:description\" content=\"Y\"/>\n```"
+    )
+    result = suggest_fix("Missing Open Graph Tags", {"url": "https://example.com/"}, api_key="fake-key")
+    assert result["ok"] is True
+    assert result["suggestion"].startswith("<meta")
+    assert "```" not in result["suggestion"]
+    # og/alt must NOT be sent in JSON mode (that caused the empty/nested failures).
+    assert mock_chat.call_args.kwargs.get("json_mode") is not True
 
 
 @patch("modules.ai_assist._chat", side_effect=RuntimeError("Groq API unavailable (HTTP 500)"))

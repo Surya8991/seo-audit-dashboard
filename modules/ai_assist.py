@@ -268,6 +268,59 @@ def detect_fix_target(issue_title: str) -> str | None:
     return None
 
 
+# Targets whose fix is a single short value fit JSON mode well. og/alt produce
+# multi-line HTML / several text lines and are requested as plain text instead.
+_JSON_FIX_TARGETS = {"title", "description", "h1"}
+
+
+def _strip_code_fence(text: str) -> str:
+    """Remove a leading/trailing markdown code fence (```html … ```), which
+    models sometimes wrap plain-text output in."""
+    t = (text or "").strip()
+    if t.startswith("```"):
+        lines = t.split("\n")
+        lines = lines[1:] if lines and lines[0].startswith("```") else lines
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        t = "\n".join(lines).strip()
+    return t
+
+
+def _extract_fix_suggestion(reply: str, structured: bool) -> tuple[str, str]:
+    """Pull (suggestion, rationale) out of a suggest_fix reply. Plain-text
+    replies are returned as-is; JSON replies are parsed and de-nested (some
+    models double-wrap the payload as an object or an array inside `suggestion`).
+    Falls back to the raw text if JSON parsing fails."""
+    if not structured:
+        return _strip_code_fence(reply).strip(), ""
+    try:
+        data = json.loads(reply)
+        suggestion = str(data.get("suggestion", "")).strip()
+        rationale = str(data.get("rationale", "")).strip()
+    except (json.JSONDecodeError, AttributeError, TypeError):
+        return _strip_code_fence(reply).strip(), ""
+
+    stripped = suggestion.strip()
+    if stripped[:1] in ("{", "["):
+        try:
+            inner = json.loads(stripped)
+        except (json.JSONDecodeError, TypeError):
+            inner = None
+        if isinstance(inner, dict) and inner.get("suggestion"):
+            suggestion = str(inner.get("suggestion", "")).strip()
+            rationale = rationale or str(inner.get("rationale", "")).strip()
+        elif isinstance(inner, list):
+            parts = []
+            for el in inner:
+                if isinstance(el, dict) and el.get("suggestion"):
+                    parts.append(str(el["suggestion"]).strip())
+                elif isinstance(el, str) and el.strip():
+                    parts.append(el.strip())
+            if parts:
+                suggestion = "\n".join(parts)
+    return suggestion, rationale
+
+
 def suggest_fix(issue_title: str, page_context: dict, api_key: str, model: str = _DEFAULT_MODEL) -> dict:
     """Draft a concrete, ready-to-use fix for a metadata/H1 issue, grounded in
     the page's own content rather than invented facts.
@@ -291,55 +344,54 @@ def suggest_fix(issue_title: str, page_context: dict, api_key: str, model: str =
 
     system_msg = (
         "You are an expert technical SEO copywriter. Given real information about a page, "
-        "draft ONE concrete, ready-to-use replacement for the specific element requested. "
+        "draft a concrete, ready-to-use replacement for the specific element requested. "
         "Ground it in the page's actual content — do not invent facts, products, or claims "
         "not implied by the given context. Keep the tone matching the existing copy where possible."
     )
-    user_msg = (
+    base_ctx = (
         f"Page URL: {url or 'unknown'}\n"
         f"Current title: {title or '(none)'}\n"
         f"Current meta description: {description or '(none)'}\n"
         f"Current H1: {h1 or '(none)'}\n"
         f"Page content snippet: {snippet or '(none captured)'}\n\n"
         f"{_FIX_TARGET_INSTRUCTIONS[target]}\n\n"
-        "Respond with ONLY a JSON object of this exact shape, no other text:\n"
-        '{"suggestion": "the drafted text", "rationale": "one sentence on why this works"}'
     )
+    # Single-value targets (title/description/H1) are reliable in JSON mode.
+    # Multi-line targets (Open Graph tag block, several alt-text lines) are NOT:
+    # wrapping multi-line HTML/text in a forced JSON object made models nest the
+    # payload or return an empty "suggestion" ("didn't return a usable
+    # suggestion"). Those get plain-text output instead, which is far more robust.
+    structured = target in _JSON_FIX_TARGETS
+    if structured:
+        user_msg = base_ctx + (
+            "Respond with ONLY a JSON object of this exact shape, no other text:\n"
+            '{"suggestion": "the drafted text", "rationale": "one sentence on why this works"}'
+        )
+    else:
+        user_msg = base_ctx + (
+            "Output ONLY the requested text/tags — no JSON, no markdown code fences, "
+            "no commentary, preamble, or explanation."
+        )
 
     try:
         reply = _chat(
             [{"role": "system", "content": system_msg}, {"role": "user", "content": user_msg}],
-            api_key, model=model, max_tokens=450, json_mode=True,
+            api_key, model=model, max_tokens=500, json_mode=structured,
         )
-        try:
-            data = json.loads(reply)
-            suggestion = str(data.get("suggestion", "")).strip()
-            rationale = str(data.get("rationale", "")).strip()
-            # Some models (seen on the multi-line og/alt outputs) double-wrap:
-            # they put ANOTHER JSON value inside the `suggestion` string — either
-            # a {"suggestion": …, "rationale": …} object, or an ARRAY of such
-            # objects / strings (the alt-text case, which asks for 2-3 lines).
-            # Unwrap one level so the user gets the clean draft, not escaped JSON.
-            stripped = suggestion.strip()
-            if stripped[:1] in ("{", "["):
-                try:
-                    inner = json.loads(stripped)
-                except (json.JSONDecodeError, TypeError):
-                    inner = None
-                if isinstance(inner, dict) and inner.get("suggestion"):
-                    suggestion = str(inner.get("suggestion", "")).strip()
-                    rationale = rationale or str(inner.get("rationale", "")).strip()
-                elif isinstance(inner, list):
-                    parts = []
-                    for el in inner:
-                        if isinstance(el, dict) and el.get("suggestion"):
-                            parts.append(str(el["suggestion"]).strip())
-                        elif isinstance(el, str) and el.strip():
-                            parts.append(el.strip())
-                    if parts:
-                        suggestion = "\n".join(parts)
-        except (json.JSONDecodeError, AttributeError, TypeError):
-            suggestion, rationale = reply.strip(), ""
+        suggestion, rationale = _extract_fix_suggestion(reply, structured)
+
+        # Robust fallback: if we still have nothing usable, retry once as plain
+        # text (no JSON constraint) — the most reliable shape for any target. The
+        # extractor still de-JSONs the retry if the model ignores the request and
+        # returns JSON anyway (a genuinely empty payload then stays empty → error).
+        if not suggestion:
+            retry = _chat(
+                [{"role": "system", "content": system_msg},
+                 {"role": "user", "content": base_ctx + "Output ONLY the requested text/tags, nothing else."}],
+                api_key, model=model, max_tokens=500,
+            )
+            suggestion, rationale = _extract_fix_suggestion(retry, structured=True)
+
         if not suggestion:
             return {"ok": False, "error": "The assistant didn't return a usable suggestion."}
         return {"ok": True, "suggestion": suggestion, "rationale": rationale, "target": target, "model": model}
