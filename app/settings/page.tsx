@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useAudit } from "@/lib/state/AuditContext";
 import { Card, PageHeader } from "@/components/ui";
+import { SettingsIcon } from "@/components/icons";
 import { useTheme } from "@/lib/useTheme";
 import { useAiConfigStatus } from "@/lib/useAiConfigStatus";
 
@@ -14,7 +15,7 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl">
-      <PageHeader title="⚙️ Settings" />
+      <PageHeader icon={<SettingsIcon size={18} />} title="Settings" />
 
       <Card className="mb-4">
         <h3 className="mb-2 text-sm font-semibold text-[var(--seo-subheading)]">

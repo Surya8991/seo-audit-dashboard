@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useAudit } from "@/lib/state/AuditContext";
 import { Card, DifficultyBadge, EmptyState, HelpSection, IssueRow, PageHeader, ScoreBadge, StatusPill, TabBar } from "@/components/ui";
+import { GlobeIcon } from "@/components/icons";
 import { difficultyBreakdown } from "@/lib/difficulty";
 import { getThematicIssues, getTopIssuesByImpact } from "@/lib/aggregate";
 import { WEIGHTS } from "@/lib/scoring";
@@ -150,7 +151,7 @@ export default function DetailPage() {
   if (results.length === 0) {
     return (
       <div>
-        <PageHeader title="🔎 URL Detail" />
+        <PageHeader icon={<GlobeIcon size={18} />} title="URL Detail" />
         <EmptyState title="No audits yet" hint="Run an audit to see details here." />
       </div>
     );
@@ -180,7 +181,7 @@ export default function DetailPage() {
       >
         ← Back to results
       </Link>
-      <PageHeader title="🔎 URL Detail" subtitle={r.url} />
+      <PageHeader icon={<GlobeIcon size={18} />} title="URL Detail" subtitle={r.url} />
 
       <div className="mb-4 flex items-center gap-2">
         {results.length > 1 ? (

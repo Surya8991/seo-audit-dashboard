@@ -2,17 +2,20 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Design tokens: indigo/violet brand, light default + dark override */
+/* Design tokens: modern-SaaS (Linear/Vercel) — restrained indigo accent,
+   hairline borders, subtle elevation, light default + dark override. */
 :root {
-  --seo-app-bg: #F5F7FB;
+  --seo-app-bg: #FAFAFB;
   --seo-card-bg: #FFFFFF;
-  --seo-card-bg-alt: #F8FAFC;
-  --seo-card-hover: #F1F5F9;
-  --seo-border: rgba(15, 23, 42, 0.08);
-  --seo-border-strong: rgba(15, 23, 42, 0.18);
-  --seo-shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
-  --seo-shadow-md: 0 4px 16px rgba(15, 23, 42, 0.10), 0 1px 4px rgba(15, 23, 42, 0.06);
-  --seo-shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.14);
+  --seo-card-bg-alt: #F7F8FA;
+  --seo-card-hover: #F4F5F7;
+  --seo-border: rgba(15, 23, 42, 0.07);
+  --seo-border-strong: rgba(15, 23, 42, 0.14);
+  /* Hairline-first elevation: a crisp border does most of the work, the shadow
+     is a whisper. Heavy drop shadows read as "template", not "product". */
+  --seo-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --seo-shadow-md: 0 2px 8px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --seo-shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.10);
 
   --seo-heading: #0F172A;
   --seo-subheading: #1E293B;
@@ -66,17 +69,26 @@
   --seo-banner-text: #F5F3FF;
   --seo-banner-muted: #C4B5FD;
 
-  --seo-radius: 14px;
+  /* Tighter radius scale — an "app" reads tighter than a marketing site. */
+  --seo-radius: 10px;
+  --seo-radius-lg: 14px;
+  --seo-radius-sm: 8px;
+  --seo-radius-pill: 6px;
 
-  --seo-score-track: #E5E7EB;
+  --seo-score-track: #E9EBF0;
+
+  --font-inter-stack: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono-stack: var(--font-jetbrains-mono), ui-monospace, "SF Mono",
+    "Cascadia Code", Menlo, Consolas, monospace;
 }
 
 .dark {
-  --seo-app-bg: #0B0B14;
-  --seo-card-bg: #16161F;
-  --seo-card-bg-alt: #1B1B27;
-  --seo-card-hover: #21212E;
-  --seo-border: rgba(255, 255, 255, 0.08);
+  --seo-app-bg: #08080B;
+  --seo-card-bg: #121216;
+  --seo-card-bg-alt: #17171C;
+  --seo-card-hover: #1D1D23;
+  --seo-border: rgba(255, 255, 255, 0.09);
   --seo-border-strong: rgba(255, 255, 255, 0.16);
 
   --seo-heading: #F5F5FA;
@@ -135,13 +147,28 @@
   --color-sev-low: var(--sev-low);
   --color-sev-low-bg: var(--sev-low-bg);
 
-  --font-sans: Arial, Helvetica, 'Segoe UI', sans-serif;
+  --font-sans: var(--font-inter-stack);
+  --font-mono: var(--font-mono-stack);
 }
 
 body {
   background: var(--seo-app-bg);
   color: var(--seo-text);
   font-family: var(--font-sans);
+  /* Inter character-variant + contextual features for a sharper UI read. */
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Data numerals (scores, counts, metrics) line up in columns and don't jitter
+   when they change — apply to any numeric display element. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.font-mono {
+  font-family: var(--font-mono);
 }
 
 .card {
@@ -149,7 +176,7 @@ body {
   border: 1px solid var(--seo-border);
   border-radius: var(--seo-radius);
   box-shadow: var(--seo-shadow-sm);
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .banner {
@@ -165,27 +192,45 @@ body {
   -webkit-text-fill-color: transparent;
 }
 
+/* Primary button. Flat accent fill, hairline-tinted inner highlight, whisper of
+   shadow — the old version glowed with a 20px violet halo that read as a
+   marketing CTA, not an app control. Class name kept (used across the app). */
 .btn-gradient {
-  background: var(--seo-gradient);
+  background: var(--seo-accent);
   color: #fff;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .btn-gradient:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.45);
+  background: color-mix(in srgb, var(--seo-accent) 88%, #000);
+}
+
+.btn-gradient:active {
+  background: color-mix(in srgb, var(--seo-accent) 80%, #000);
+}
+
+.btn-gradient:focus-visible {
+  outline: 2px solid var(--seo-accent);
+  outline-offset: 2px;
 }
 
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  border-radius: 999px;
-  padding: 0.15rem 0.65rem;
-  font-size: 0.75rem;
+  gap: 0.3rem;
+  border-radius: var(--seo-radius-pill);
+  padding: 0.12rem 0.5rem;
+  font-size: 0.72rem;
   font-weight: 600;
   line-height: 1.4;
+  letter-spacing: 0.005em;
+}
+
+/* Tight tracking on headings/large text is the single biggest "modern SaaS"
+   typography tell (Inter at display sizes wants slightly negative tracking). */
+h1, h2, h3, .track-tight {
+  letter-spacing: -0.014em;
 }
 
 /* CSS conic-gradient score circle. Usage: <div class="score-circle" style="--score-color:#10B981;--score-deg:324deg"><span>90</span></div> */

@@ -1,9 +1,26 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuditProvider } from "@/lib/state/AuditContext";
 import { AppShell } from "@/components/AppShell";
 import { themeInitScript } from "@/components/ThemeToggle";
+
+// Inter is the canonical modern-SaaS UI face (Linear/Vercel-family). next/font
+// self-hosts the files at build time — no runtime request to Google, so it does
+// not need a CSP allowance. `font-display: swap` avoids invisible text.
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+});
+
+// Monospace for URLs, code, and raw values in the audit output.
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-jetbrains-mono",
+});
 
 const SITE_URL = "https://seo-audit-dashboard-topaz.vercel.app";
 const SITE_NAME = "SEO Technical Audit Dashboard";
@@ -45,7 +62,7 @@ export default async function RootLayout({
   // this inline script needs it or the CSP's script-src blocks it.
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   return (
-    <html lang="en" className="h-full antialiased">
+    <html lang="en" className={`h-full antialiased ${inter.variable} ${jetbrainsMono.variable}`}>
       <head>
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>

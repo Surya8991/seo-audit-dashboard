@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useAudit } from "@/lib/state/AuditContext";
 import { allIssuesOf, avgScore, getTopIssuesByImpact } from "@/lib/aggregate";
 import { explainCommonIssue } from "@/lib/commonIssuesKB";
+import { BotIcon, MessageIcon, XIcon } from "@/components/icons";
 import type { AuditResult, Issue } from "@/lib/types";
 
 interface ChatMessage {
@@ -176,7 +177,10 @@ export function ChatWidget() {
         <div className="flex h-[28rem] w-[22rem] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-xl border border-[var(--seo-border)] bg-[var(--seo-card-bg)] shadow-xl">
           <div className="flex items-center justify-between border-b border-[var(--seo-border)] bg-[var(--table-header-bg)] px-4 py-2.5">
             <div>
-              <div className="text-sm font-semibold text-[var(--seo-subheading)]">🤖 AI Assistant</div>
+              <div className="flex items-center gap-1.5 text-sm font-semibold text-[var(--seo-subheading)]">
+                <BotIcon size={16} className="text-[var(--seo-accent)]" />
+                AI Assistant
+              </div>
               {auditContext ? (
                 <div className="truncate text-xs text-[var(--seo-muted)]" title={auditContext.url}>
                   Context: {auditContext.url}
@@ -189,9 +193,9 @@ export function ChatWidget() {
               type="button"
               aria-label="Close chat"
               onClick={() => setOpen(false)}
-              className="rounded-lg px-2 py-1 text-[var(--seo-muted)] hover:bg-[var(--seo-card-hover)]"
+              className="rounded-lg p-1 text-[var(--seo-muted)] transition-colors hover:bg-[var(--seo-card-hover)] hover:text-[var(--seo-heading)]"
             >
-              ✕
+              <XIcon size={16} />
             </button>
           </div>
 
@@ -264,9 +268,9 @@ export function ChatWidget() {
         type="button"
         aria-label={open ? "Close AI assistant" : "Open AI assistant"}
         onClick={() => setOpen((v) => !v)}
-        className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--seo-accent)] text-2xl text-white shadow-lg transition-transform hover:scale-105"
+        className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--seo-accent)] text-white shadow-lg transition-transform hover:scale-105"
       >
-        {open ? "✕" : "💬"}
+        {open ? <XIcon size={20} /> : <MessageIcon size={20} />}
       </button>
     </div>
   );

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAudit } from "@/lib/state/AuditContext";
 import { Card, MetricCard, PageHeader, EmptyState, IssueRow } from "@/components/ui";
+import { GaugeIcon } from "@/components/icons";
 import { formatDate, scoreColor } from "@/lib/format";
 import {
   allIssuesOf,
@@ -46,7 +47,7 @@ export default function DashboardPage() {
   if (results.length === 0) {
     return (
       <div>
-        <PageHeader title="📊 Dashboard Overview" />
+        <PageHeader icon={<GaugeIcon size={18} />} title="Dashboard Overview" />
         <EmptyState
           title="No audits yet"
           hint="Run your first audit to see your SEO health dashboard."
@@ -86,7 +87,8 @@ export default function DashboardPage() {
   return (
     <div>
       <PageHeader
-        title="📊 Dashboard Overview"
+        icon={<GaugeIcon size={18} />}
+        title="Dashboard Overview"
         subtitle={`Last audit: ${formatDate(lastAuditDate)}`}
       />
 

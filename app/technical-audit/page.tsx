@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAudit } from "@/lib/state/AuditContext";
 import { Card, HelpSection, PageHeader } from "@/components/ui";
+import { FileTextIcon, LinkIcon, MapIcon, NetworkIcon, ScanIcon } from "@/components/icons";
+import type { ComponentType, SVGProps } from "react";
 import type { AuditResult } from "@/lib/types";
 import { parseUrlList } from "@/lib/crawl/parseUrlList";
 import { DEFAULT_CONCURRENCY, MAX_CONCURRENCY } from "@/lib/crawl/orchestrator";
@@ -34,21 +36,23 @@ const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = Number(process.env.NEXT_PUBLIC_BULK_URL_LIMIT) || 200;
 const CRAWL_MAX_LIMIT = MAX_LIMIT;
 
-const MODES: { id: InputMode; label: string; icon: string; hint: string; help: string }[] = [
+type ModeIcon = ComponentType<SVGProps<SVGSVGElement> & { size?: number }>;
+
+const MODES: { id: InputMode; label: string; icon: ModeIcon; hint: string; help: string }[] = [
   {
-    id: "single", label: "Single URL", icon: "🔗", hint: "Audit one page.",
+    id: "single", label: "Single URL", icon: LinkIcon, hint: "Audit one page.",
     help: "Runs the full 35-check technical audit on exactly one URL you enter. Best when you just want to check one page: a new blog post, a landing page you're about to publish, or a page a client asked about.",
   },
   {
-    id: "sitemap", label: "Sitemap", icon: "🗺️", hint: "Sitewide audit from sitemap.xml.",
+    id: "sitemap", label: "Sitemap", icon: MapIcon, hint: "Sitewide audit from sitemap.xml.",
     help: "Reads a site's sitemap.xml (following nested sitemap-index files automatically) and audits a sample of the URLs it finds. Best for a broad health check across an entire site without manually listing every page.",
   },
   {
-    id: "crawl", label: "Crawl from URL", icon: "🕷️", hint: "Discover pages by following links, no sitemap needed.",
+    id: "crawl", label: "Crawl from URL", icon: NetworkIcon, hint: "Discover pages by following links, no sitemap needed.",
     help: "Starts at one URL and discovers more pages by following its internal links, the same way a search engine crawler would. Best when a site has no sitemap, or you want to check exactly what's actually reachable by clicking around the site.",
   },
   {
-    id: "list", label: "CSV / Paste URLs", icon: "📄", hint: "Bulk audit a list of URLs.",
+    id: "list", label: "CSV / Paste URLs", icon: FileTextIcon, hint: "Bulk audit a list of URLs.",
     help: "Audits a specific list of URLs you provide: paste them one per line, or upload a CSV/TXT file with a url/link column. Best when you already know exactly which pages you want checked (e.g. a client's priority page list).",
   },
 ];
@@ -322,7 +326,8 @@ export default function TechnicalAuditPage() {
   return (
     <div className="max-w-4xl">
       <PageHeader
-        title="🚀 Technical Audit"
+        icon={<ScanIcon size={18} />}
+        title="Technical Audit"
         subtitle="Run a technical SEO audit on a single URL, an entire sitemap, a crawl, or a list of URLs."
       />
 
@@ -370,16 +375,18 @@ export default function TechnicalAuditPage() {
             onKeyDown={(e) => {
               if (!running && (e.key === "Enter" || e.key === " ")) setMode(m.id);
             }}
-            className={`relative flex flex-col items-start rounded-xl border p-3 text-left transition-colors ${
+            className={`relative flex flex-col items-start rounded-lg border p-3 text-left transition-colors ${
               running ? "cursor-default opacity-60" : "cursor-pointer"
             } ${
               mode === m.id
                 ? "border-[var(--seo-accent)] bg-[var(--seo-accent-light)]"
-                : "border-[var(--seo-border)] hover:bg-[var(--seo-card-hover)]"
+                : "border-[var(--seo-border)] hover:border-[var(--seo-border-strong)] hover:bg-[var(--seo-card-hover)]"
             }`}
           >
-            <span className="text-lg">{m.icon}</span>
-            <span className="mt-1 text-sm font-semibold text-[var(--seo-subheading)]">{m.label}</span>
+            <span className={mode === m.id ? "text-[var(--seo-accent)]" : "text-[var(--seo-text-light)]"}>
+              <m.icon size={20} />
+            </span>
+            <span className="mt-1.5 text-sm font-semibold text-[var(--seo-subheading)]">{m.label}</span>
             <span className="pr-4 text-xs text-[var(--seo-muted)]">{m.hint}</span>
           </div>
         ))}

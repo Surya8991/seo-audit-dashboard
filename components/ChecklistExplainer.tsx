@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Card } from "@/components/ui";
 import { CHECK_DEFS } from "@/lib/checklistDefs";
+import { ListChecksIcon } from "@/components/icons";
 
 /**
  * "What Technical SEO checks" explainer, mirroring the reference tool's
@@ -22,7 +23,7 @@ export function ChecklistExplainer() {
         className="flex w-full items-center justify-between gap-2 text-left"
       >
         <span className="flex items-center gap-2">
-          <span className="text-lg">⚙️</span>
+          <ListChecksIcon size={16} className="text-[var(--seo-accent)]" />
           <h3 className="text-sm font-semibold text-[var(--seo-accent)]">What Technical SEO checks</h3>
         </span>
         <span className={`text-[var(--seo-muted)] transition-transform ${open ? "rotate-90" : ""}`}>▸</span>

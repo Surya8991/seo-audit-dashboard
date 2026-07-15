@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAudit } from "@/lib/state/AuditContext";
+import { SearchIcon } from "@/components/icons";
 
 // Jumps straight to a previously-audited URL's Detail page from anywhere in
 // the app. Filters the in-memory results already held by AuditContext (no
@@ -44,7 +45,7 @@ export function GlobalSearch({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div ref={containerRef} className="relative w-full max-w-xs">
       <div className="flex items-center gap-2 rounded-lg border border-[var(--seo-border)] bg-[var(--seo-card-bg-alt)] px-3 py-1.5 focus-within:border-[var(--seo-accent-border)]">
-        <span className="text-sm text-[var(--seo-muted)]">🔎</span>
+        <SearchIcon size={15} className="shrink-0 text-[var(--seo-muted)]" />
         <input
           ref={inputRef}
           type="search"

@@ -4,6 +4,7 @@ import type { Issue } from "@/lib/types";
 import { fixDifficulty, type Difficulty } from "@/lib/difficulty";
 import { explainCommonIssue, type CommonIssueExplanation } from "@/lib/commonIssuesKB";
 import { detectFixTarget, type FixPageContext, type FixSuggestion } from "@/lib/fixSuggestable";
+import { SparklesIcon, XIcon } from "@/components/icons";
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <div className={`card p-5 ${className}`}>{children}</div>;
@@ -35,11 +36,12 @@ export function Modal({
       <div
         role="dialog"
         aria-modal="true"
-        className="card relative z-10 max-h-[85vh] w-full max-w-2xl overflow-y-auto p-5 shadow-xl"
+        className="card relative z-10 max-h-[85vh] w-full max-w-2xl overflow-y-auto p-5"
+        style={{ borderRadius: "var(--seo-radius-lg)", boxShadow: "var(--seo-shadow-lg)" }}
       >
         <div className="mb-3 flex items-start justify-between gap-3">
           {title ? (
-            <h3 className="text-base font-semibold text-[var(--seo-heading)]">{title}</h3>
+            <h3 className="text-base font-semibold tracking-tight text-[var(--seo-heading)]">{title}</h3>
           ) : (
             <span />
           )}
@@ -47,9 +49,9 @@ export function Modal({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="shrink-0 rounded-lg p-1 text-[var(--seo-muted)] hover:bg-[var(--seo-card-hover)]"
+            className="shrink-0 rounded-lg p-1 text-[var(--seo-muted)] transition-colors hover:bg-[var(--seo-card-hover)] hover:text-[var(--seo-heading)]"
           >
-            ✕
+            <XIcon size={16} />
           </button>
         </div>
         {children}
@@ -72,14 +74,14 @@ export function TabBar<T extends string>({
   onChange: (tab: T) => void;
 }) {
   return (
-    <div className="mb-4 flex flex-wrap gap-1 rounded-lg bg-[var(--seo-card-alt)] p-1">
+    <div className="mb-4 flex flex-wrap gap-0.5 rounded-lg border border-[var(--seo-border)] bg-[var(--seo-card-alt)] p-1">
       {tabs.map((t) => (
         <button
           key={t}
           onClick={() => onChange(t)}
-          className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+          className={`rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors ${
             active === t
-              ? "bg-[var(--seo-card-bg)] text-[var(--seo-accent)] shadow-sm"
+              ? "bg-[var(--seo-card-bg)] text-[var(--seo-heading)] shadow-sm"
               : "text-[var(--seo-text-light)] hover:text-[var(--seo-subheading)]"
           }`}
         >
@@ -103,7 +105,7 @@ export function MetricCard({
 }) {
   return (
     <Card
-      className={onClick ? "cursor-pointer transition-shadow hover:shadow-md" : ""}
+      className={onClick ? "cursor-pointer transition-colors hover:border-[var(--seo-border-strong)]" : ""}
     >
       <button
         type="button"
@@ -111,11 +113,11 @@ export function MetricCard({
         disabled={!onClick}
         className="w-full text-left disabled:cursor-default"
       >
-        <div className="text-xs font-medium uppercase tracking-wide text-[var(--seo-muted)]">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--seo-muted)]">
           {label}
         </div>
-        <div className="mt-1 text-2xl font-bold text-[var(--seo-heading)]">{value}</div>
-        {sub ? <div className="mt-1 text-xs text-[var(--seo-text-light)]">{sub}</div> : null}
+        <div className="mt-1.5 text-[26px] font-semibold leading-none tracking-tight text-[var(--seo-heading)] tabular-nums">{value}</div>
+        {sub ? <div className="mt-1.5 text-xs text-[var(--seo-text-light)]">{sub}</div> : null}
       </button>
     </Card>
   );
@@ -298,9 +300,10 @@ function FixSuggestionButton({
         type="button"
         onClick={run}
         disabled={state === "loading"}
-        className="text-xs font-medium text-[var(--seo-accent)] hover:underline disabled:opacity-60"
+        className="inline-flex items-center gap-1 text-xs font-medium text-[var(--seo-accent)] hover:underline disabled:opacity-60"
       >
-        {state === "loading" ? "Drafting…" : "✨ Suggest a fix"}
+        <SparklesIcon size={13} />
+        {state === "loading" ? "Drafting…" : "Suggest a fix"}
       </button>
       {result?.ok ? (
         <div className="mt-2 rounded-lg bg-[var(--seo-card-hover)] p-2 text-xs">
@@ -445,11 +448,31 @@ export function HelpSection({ title, children }: { title?: string; children: Rea
   );
 }
 
-export function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+export function PageHeader({
+  title,
+  subtitle,
+  icon,
+  actions,
+}: {
+  title: string;
+  subtitle?: string;
+  icon?: ReactNode;
+  actions?: ReactNode;
+}) {
   return (
-    <div className="mb-6">
-      <h1 className="text-2xl font-bold tracking-tight text-[var(--seo-heading)]">{title}</h1>
-      {subtitle ? <p className="mt-1 text-sm text-[var(--seo-text-light)]">{subtitle}</p> : null}
+    <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+      <div className="flex items-center gap-3">
+        {icon ? (
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--seo-border)] bg-[var(--seo-card-bg)] text-[var(--seo-accent)]">
+            {icon}
+          </span>
+        ) : null}
+        <div>
+          <h1 className="text-[22px] font-semibold tracking-tight text-[var(--seo-heading)]">{title}</h1>
+          {subtitle ? <p className="mt-0.5 text-sm text-[var(--seo-text-light)]">{subtitle}</p> : null}
+        </div>
+      </div>
+      {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
     </div>
   );
 }

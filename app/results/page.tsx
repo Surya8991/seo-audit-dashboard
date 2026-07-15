@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAudit } from "@/lib/state/AuditContext";
 import { Card, EmptyState, PageHeader, ScoreBadge, ScoreCircle, StatusPill } from "@/components/ui";
+import { ListChecksIcon } from "@/components/icons";
 import { ExportBar } from "@/components/ExportBar";
 import { AiSummaryCard } from "@/components/AiSummaryCard";
 import { allIssuesOf, avgScore, issuesByTitle, type AggregatedIssue } from "@/lib/aggregate";
@@ -311,7 +312,7 @@ export default function ResultsPage() {
   if (results.length === 0) {
     return (
       <div>
-        <PageHeader title="📋 Audit Results" />
+        <PageHeader icon={<ListChecksIcon size={18} />} title="Audit Results" />
         <EmptyState title="No audits yet" hint="Run an audit to see results here." />
       </div>
     );
@@ -319,7 +320,7 @@ export default function ResultsPage() {
 
   return (
     <div>
-      <PageHeader title="📋 Audit Results" subtitle={`${filtered.length} of ${results.length} URLs`} />
+      <PageHeader icon={<ListChecksIcon size={18} />} title="Audit Results" subtitle={`${filtered.length} of ${results.length} URLs`} />
 
       {rollup ? (
         <Card className="mb-4">

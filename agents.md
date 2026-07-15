@@ -396,6 +396,27 @@ point at `https://seo-audit-dashboard-topaz.vercel.app` (update if the
 deploy domain changes). The old default Next.js `app/favicon.ico` was
 deleted in favor of `icon.tsx`.
 
+## Design system (modern-SaaS, Session 23)
+- **Font:** Inter (UI) + JetBrains Mono (`.font-mono`, for URLs/values), wired via
+  `next/font/google` in `app/layout.tsx` (self-hosted at build time — do NOT add a
+  CSP allowance or a `<link>` to Google Fonts, and don't reintroduce the Arial
+  stack). `--font-sans`/`--font-mono` in `globals.css` point at them.
+- **Tokens live in `app/globals.css`** (`--seo-*`, light default + `.dark`
+  override): radius scale (`--seo-radius` 10px / `-lg` 14 / `-sm` 8 / `-pill` 6),
+  hairline-first elevation (`--seo-shadow-*` are intentionally subtle — a crisp
+  border does the work, not a drop shadow), restrained accent (gradients are
+  dialed back; `.btn-gradient` is a FLAT accent fill now, not a glow). Use the
+  `.tabular-nums` utility on any numeric display (scores/counts/metrics).
+- **Icons: `components/icons.tsx`** — Lucide-style inline SVG (`currentColor`,
+  1.75 stroke). **Do NOT use emoji as structural icons** (they render per-OS and
+  can't be themed); add a new SVG here and import it. `PageHeader` takes an
+  `icon` prop; pages pass their SVG, not an emoji in the title string.
+- **Shared components** stay in `components/ui.tsx` (Card, Modal, TabBar,
+  MetricCard, badges, PageHeader) — restyle THERE, don't hand-roll a variant.
+- The favicon/OG generators (`app/icon.tsx`, `apple-icon.tsx`,
+  `opengraph-image.tsx`) draw CSS shapes at build time (Satori has no emoji
+  font); they are not app UI and were intentionally left as-is.
+
 ## Security headers / CSP
 `proxy.ts` sets a nonce-based Content-Security-Policy per request
 (Next.js's documented pattern: `script-src 'self' 'nonce-<random>'
