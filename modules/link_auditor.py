@@ -40,9 +40,13 @@ KNOWN_BLOCKER_DOMAINS = {
 WEAK_ANCHORS = {
     "click here", "here", "read more", "learn more", "link",
     "this", "more", "see more", "see here", "visit", "go here",
-    "continue", "source", "website", "url", "page", "article",
+    "continue", "website", "url", "page", "article",
     "post", "check out", "check this", "find out", "more info",
-    "click", "view", "details", "info", "example", "download",
+    "click", "view", "details", "info",
+    # NOTE: "source", "download", and "example" were removed — on a citation
+    # ("Source"), a file link ("Download"), or a demo link ("Example") they are
+    # contextually descriptive, not generic filler, and flagging them produced
+    # weak-anchor false positives.
 }
 
 # Domain type categories for external link classification
@@ -80,7 +84,12 @@ def get_full_domain(url):
 
 def categorize_domain(domain):
     """Return a category label for an external domain."""
-    d = domain.lower().lstrip("www.")
+    # `lstrip("www.")` strips any leading run of the CHARACTERS w/./., so it
+    # corrupted domains like "worldbank.org" -> "orldbank.org"; strip the literal
+    # "www." prefix instead.
+    d = domain.lower()
+    if d.startswith("www."):
+        d = d[4:]
     for cat, domains in DOMAIN_CATEGORIES.items():
         if d in domains:
             return cat.title()
@@ -132,23 +141,33 @@ def link_health(code, domain=""):
     Classify link health:
       ok       : 2xx
       redirect : 3xx
-      blocked  : 999, 403 on known social/professional sites
-      broken   : 4xx (not blocked), 5xx, 0 (connection error)
-      unknown  : None (not validated)
+      blocked  : 401/403 (auth / WAF / bot-challenge), 408/429 (rate-limit),
+                 451, 503 (unavailable/maintenance), 999 — the server is alive
+                 but refused or throttled our bot request; NOT a dead link
+      broken   : 404, 410, and 500/502/504 — a genuinely dead or erroring resource
+      unknown  : None (not validated), 0 (timeout/connection/SSL — could not verify)
+
+    Prior versions bucketed 403 (unless on a tiny hard-coded social-domain
+    allowlist), 429, 503, and every connection failure as "broken", so a link to
+    any Cloudflare/WAF-protected site, a rate-limited API host, or a slow server
+    that timed out during the 12-worker burst was reported as a broken link on a
+    page that has no broken links. "blocked"/"unknown" are excluded from the
+    broken count so those false positives no longer fire.
     """
-    if code is None:
+    if code is None or code == 0:
         return "unknown"
-    if code == 0:
-        return "broken"
-    base = get_base_domain(domain or "")
-    if code == 999 or (code == 403 and base in KNOWN_BLOCKER_DOMAINS):
+    if code in (401, 403, 408, 429, 451, 503, 999):
         return "blocked"
     if 200 <= code < 300:
         return "ok"
     if 300 <= code < 400:
         return "redirect"
-    if code >= 400:
+    if code in (404, 410) or 500 <= code < 600:
         return "broken"
+    if 400 <= code < 500:
+        # Other 4xx (400/405/406/…): an access/protocol refusal, not a confirmed
+        # dead resource. Treat as blocked so it doesn't inflate the broken count.
+        return "blocked"
     return "unknown"
 
 
@@ -430,19 +449,24 @@ def validate_url(url):
             "ssl_error":        ssl_error,
         }
 
+    # Timeout / SSL / connection failures are transient or environmental (a slow
+    # server, a cold CDN, a cert quirk, a blip during the 12-worker burst) — they
+    # mean "could not verify", not "dead link". Marking them broken produced
+    # broken-link false positives on pages whose links are actually fine, so they
+    # are now "unknown" (is_broken False) and excluded from the broken count.
     except requests.exceptions.Timeout:
         return {"url": url, "status_code": 0, "status_label": "Timeout",
-                "health": "broken", "is_broken": True, "is_redirect": False,
+                "health": "unknown", "is_broken": False, "is_redirect": False,
                 "response_time_ms": TIMEOUT * 1000}
     except requests.exceptions.SSLError:
         return {"url": url, "status_code": 0, "status_label": "SSL Error",
-                "health": "broken", "is_broken": True, "is_redirect": False}
+                "health": "unknown", "is_broken": False, "is_redirect": False}
     except requests.exceptions.ConnectionError:
         return {"url": url, "status_code": 0, "status_label": "Connection Error",
-                "health": "broken", "is_broken": True, "is_redirect": False}
+                "health": "unknown", "is_broken": False, "is_redirect": False}
     except Exception as e:
         return {"url": url, "status_code": 0, "status_label": f"Error: {str(e)[:40]}",
-                "health": "broken", "is_broken": True, "is_redirect": False}
+                "health": "unknown", "is_broken": False, "is_redirect": False}
 
 
 def validate_urls_bulk(urls, max_workers=12):

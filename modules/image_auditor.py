@@ -27,8 +27,13 @@ GENERIC_ALT_PATTERNS = {
     "untitled",
 }
 
+# A generic auto-generated filename stem. The token must be followed by a digit,
+# a separator, or end-of-stem so ordinary words that merely START with these
+# letters are not flagged: "photography-guide" / "imagery-hero" / "imagine" are
+# descriptive filenames, not "photo"/"image"/"img" boilerplate. Prior pattern
+# used `\d*` (zero-or-more) with no boundary, so `^photo` matched "photography".
 BAD_NAMING_RE = re.compile(
-    r"^(img|image|dsc|screenshot|untitled|photo)\d*|image-final|IMG_\d+",
+    r"^(img|image|dsc|screenshot|untitled|photo)(\d+|[-_ ]|$)|IMG_\d+",
     re.IGNORECASE,
 )
 
@@ -270,18 +275,24 @@ def _extract_image_data(soup, base_url):
         nq = _naming_quality(name)
 
         per_image_issues = []
-        if a_status == "missing":
-            per_image_issues.append("Missing alt text")
-        elif a_status == "empty":
-            per_image_issues.append("Empty alt text")
-        elif a_status == "generic":
-            per_image_issues.append("Generic alt text")
-        elif a_status == "keyword_stuffed":
-            per_image_issues.append("Keyword-stuffed alt text")
-        if not has_lazy:
-            per_image_issues.append("Missing lazy loading")
-        if not has_dimensions:
-            per_image_issues.append("Missing width/height dimensions")
+        # alt / lazy-loading / width-height only apply to the rendered <img>. A
+        # <picture>'s <source> elements never carry alt, loading, or width/height
+        # (those belong on the fallback <img>), so running these checks on a
+        # <source> produced phantom "Missing alt / dimensions / lazy loading"
+        # issues for every correctly-authored responsive <picture>.
+        if tag.name == "img":
+            if a_status == "missing":
+                per_image_issues.append("Missing alt text")
+            elif a_status == "empty":
+                per_image_issues.append("Empty alt text")
+            elif a_status == "generic":
+                per_image_issues.append("Generic alt text")
+            elif a_status == "keyword_stuffed":
+                per_image_issues.append("Keyword-stuffed alt text")
+            if not has_lazy:
+                per_image_issues.append("Missing lazy loading")
+            if not has_dimensions:
+                per_image_issues.append("Missing width/height dimensions")
         if nq == "bad":
             per_image_issues.append("Poor filename convention")
         if ext in ("jpg", "jpeg", "png"):
@@ -289,6 +300,7 @@ def _extract_image_data(soup, base_url):
 
         images.append({
             "url": url,
+            "tag_name": tag.name,  # "img" or "source" (see _compute_summary)
             "name": name,
             "extension": ext,
             "format_label": format_label,
@@ -367,8 +379,17 @@ def _populate_sizes(images, max_size_checks, base_url=""):
             size_bytes, status = status_map[url]
             img["file_size_bytes"] = size_bytes
             img["file_size_label"] = _file_size_label(size_bytes)
-            img["status_code"] = status.get("status_code")
-            img["is_broken"] = status.get("reachable") is False
+            code = status.get("status_code")
+            img["status_code"] = code
+            # Only a genuinely dead resource is "broken": 404/410 or a hard 5xx.
+            # 401/403 (hotlink protection / WAF), 429 (rate limit), 503
+            # (transient), and timeout/SSL/connection failures (status_code None)
+            # mean "could not verify from a bot" — not that the image is missing
+            # in a real browser. Marking those broken flagged perfectly visible
+            # CDN/hotlink-protected images as "fails to load".
+            img["is_broken"] = code in (404, 410) or (
+                code is not None and 500 <= code < 600 and code != 503
+            )
             img["fetch_error"] = status.get("error")
 
             if img["is_broken"] and "Broken image (does not load)" not in img["issues"]:
@@ -382,12 +403,16 @@ def _populate_sizes(images, max_size_checks, base_url=""):
 def _compute_summary(images, check_sizes):
     """Compute aggregate summary counts."""
     total = len(images)
-    missing_alt = sum(1 for i in images if i["alt_status"] == "missing")
-    empty_alt = sum(1 for i in images if i["alt_status"] == "empty")
-    generic_alt = sum(1 for i in images if i["alt_status"] == "generic")
-    keyword_stuffed_alt = sum(1 for i in images if i["alt_status"] == "keyword_stuffed")
-    no_lazy = sum(1 for i in images if not i["has_lazy"])
-    no_dimensions = sum(1 for i in images if not i["has_dimensions"])
+    # alt / lazy / dimensions are <img>-only attributes; a <picture>'s <source>
+    # never carries them, so counting <source> here inflated every count and
+    # emitted "Missing alt/dimensions/lazy on N image(s)" false positives.
+    imgs = [i for i in images if i.get("tag_name", "img") == "img"]
+    missing_alt = sum(1 for i in imgs if i["alt_status"] == "missing")
+    empty_alt = sum(1 for i in imgs if i["alt_status"] == "empty")
+    generic_alt = sum(1 for i in imgs if i["alt_status"] == "generic")
+    keyword_stuffed_alt = sum(1 for i in imgs if i["alt_status"] == "keyword_stuffed")
+    no_lazy = sum(1 for i in imgs if not i["has_lazy"])
+    no_dimensions = sum(1 for i in imgs if not i["has_dimensions"])
     non_webp = sum(1 for i in images if i["extension"] in ("jpg", "jpeg", "png"))
     bad_naming = sum(1 for i in images if i["naming_quality"] == "bad")
 
@@ -444,12 +469,14 @@ def _build_issues(summary, check_sizes):
         })
 
     if n["empty_alt"] > 0:
+        # alt="" is correct for decorative images (WCAG); advisory, not a
+        # confirmed problem. See the matching note in modules/auditor.py.
         issues.append({
-            "issue": f"Empty alt text on {n['empty_alt']} image(s)",
+            "issue": f"Empty alt text on {n['empty_alt']} image(s) (verify decorative)",
             "category": "Image SEO",
-            "severity": "Medium",
-            "recommendation": "Provide meaningful alt text; use alt='' only for purely decorative images.",
-            "impact_score": 5,
+            "severity": "Low",
+            "recommendation": "Empty alt='' is correct for decorative images. Add a description only for images that convey meaning.",
+            "impact_score": 2,
             "effort": "Low",
         })
 

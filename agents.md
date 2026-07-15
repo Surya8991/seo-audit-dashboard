@@ -524,6 +524,35 @@ Edstellar sitemap/pages and take 30+ seconds. Opt in with `RUN_LIVE_TESTS=1`.
 - Any change to `modules/scoring.py`'s `WEIGHTS`/`THEMES` must be mirrored in
   `lib/scoring.ts`/`lib/aggregate.ts` in the same commit; doc/config drift
   between the two is a bug.
+- **`THEMES` matching is substring** (`keyword.lower() in category.lower()`),
+  so every keyword must be a substring of the EXACT category strings the check
+  modules emit (grep `"category":` across `modules/*.py`). A keyword that
+  doesn't match silently dumps that category into the "Other" bucket. Session
+  22 fixed 7 such categories (Heading Structure, Security, Responsiveness,
+  Usability, Navigation, User Experience, Layout); guarded by
+  `tests/test_scoring.py` + `lib/aggregate.test.ts`. Adding a new check
+  category means adding a matching `THEMES` keyword in BOTH files.
+- **"blocked"/"unknown" are NOT "broken".** `link_auditor.py::link_health` and
+  `image_auditor.py::_populate_sizes` only classify 404/410/hard-5xx as a dead
+  resource; 401/403 (WAF/bot-challenge), 408/429 (rate-limit), 503, and
+  timeout/SSL/connection failures are "blocked"/"unknown" and excluded from the
+  broken count. Do NOT re-bucket them as broken — that was the biggest
+  broken-link/image false-positive source (a live Cloudflare-protected link
+  reported dead). Guarded by `tests/test_link_auditor.py`/`test_image_auditor.py`.
+- **Absence of an OPTIONAL signal is not a scored issue.** Content-freshness
+  meta, a `<meta charset>` when the HTTP header already declares one, a favicon
+  `<link>` when `/favicon.ico` may exist, `alt=""` on a decorative image — these
+  degrade to no-issue / Low-advisory, not a scored problem. Same for a check that
+  couldn't verify (timeout on the www-alt probe, an unfetchable canonical target):
+  emit nothing rather than assert a claim that may be false. This is the core
+  "don't show issues on pages that don't have them" principle from the Session 22
+  audit.
+- **Sitewide issue attribution:** `lib/aggregate.ts::issuesByTitle` groups issues
+  by title while KEEPING the affected-page URLs, so the Results rollup can list
+  which pages each issue hits (not just "N pages"). `modules/ai_assist.py::
+  _aggregate_issues` does the server-side equivalent (dedupe by title + page
+  count, severity-sorted Critical-first) so the AI summary cites accurate
+  per-issue counts and rare-but-severe issues survive the char-budget truncation.
 - The Groq API key entered in Settings is sent per-request to
   `/api/ai-summary` and stored only in browser localStorage, never persisted
   server-side. Don't add server-side storage for it without discussing first.
@@ -560,11 +589,15 @@ Edstellar sitemap/pages and take 30+ seconds. Opt in with `RUN_LIVE_TESTS=1`.
   per-page auditing are deliberately two separate steps here (discovery in
   `api/audit-pipeline.py`'s "crawl" action, auditing via the browser's `lib/crawl/orchestrator.ts`),
   unlike the `venkataramana-work` branch's own single-endpoint design.
-- `modules/heading_auditor.py`'s heading tree now excludes `<nav>`,
-  `<header>`, `<footer>`, and `<aside>` elements (a bug fix merged from
-  `venkataramana-work`: boilerplate headings inside nav/site-chrome were
+- `modules/heading_auditor.py`'s heading tree excludes `<nav>`, `<footer>`,
+  and `<aside>` elements (boilerplate headings inside nav/site-chrome were
   previously counted as page content headings, skewing the H1/hierarchy
-  checks). Covered by `tests/test_heading_auditor.py`.
+  checks). **`<header>` is deliberately NOT excluded** (Session 22 fix): the
+  standard `<header><h1>Title</h1></header>` / `<article><header
+  class="entry-header"><h1>…` CMS pattern put the page's real H1 inside
+  `<header>`, so stripping it fired a Critical "Missing H1" false positive on
+  valid pages. Site-chrome headings live in `<nav>`/`<footer>`, not `<header>`.
+  Covered by `tests/test_heading_auditor.py`.
 - The `venkataramana-work` branch (`git fetch origin venkataramana-work`) has
   a `phases.md` with a fuller crawl-feature roadmap (async job queue +
   SQLite/Postgres persistence, resumable `crawl_step`, optional Playwright JS

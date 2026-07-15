@@ -6,7 +6,7 @@ import { useAudit } from "@/lib/state/AuditContext";
 import { Card, EmptyState, PageHeader, ScoreBadge, ScoreCircle, StatusPill } from "@/components/ui";
 import { ExportBar } from "@/components/ExportBar";
 import { AiSummaryCard } from "@/components/AiSummaryCard";
-import { allIssuesOf, avgScore } from "@/lib/aggregate";
+import { allIssuesOf, avgScore, issuesByTitle, type AggregatedIssue } from "@/lib/aggregate";
 import { difficultyBreakdown } from "@/lib/difficulty";
 import { downloadCsv, severityColor } from "@/lib/format";
 import { getBaseDomain } from "@/lib/linkAnalysis";
@@ -36,6 +36,59 @@ function sectionOf(url: string): string {
   const path = pathnameOf(url);
   const segment = path.split("/").filter(Boolean)[0];
   return segment || "(root)";
+}
+
+/**
+ * One row in the sitewide "Top failing checks" list: the issue title + a
+ * "N pages" pill that expands to list the EXACT affected page URLs, each a
+ * button that jumps to that page's detail view. Replaces the old flat row that
+ * showed "N pages" with no way to see which pages.
+ */
+function FailingIssueRow({
+  issue,
+  onOpenUrl,
+}: {
+  issue: AggregatedIssue;
+  onOpenUrl: (url: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const color = severityColor(issue.severity).text;
+  return (
+    <div className="text-sm">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-3 text-left"
+        aria-expanded={open}
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <span className={`shrink-0 text-xs text-[var(--seo-muted)] transition-transform ${open ? "rotate-90" : ""}`}>▸</span>
+          <span className="truncate text-[var(--seo-text)]" style={{ borderLeft: `3px solid ${color}`, paddingLeft: 8 }}>
+            {issue.issue}
+          </span>
+        </span>
+        <span className="shrink-0 rounded-full bg-[var(--seo-card-hover)] px-2 py-0.5 text-xs font-medium text-[var(--seo-text-light)]">
+          {issue.count} {issue.count === 1 ? "page" : "pages"}
+        </span>
+      </button>
+      {open ? (
+        <ul className="ml-6 mt-1 flex flex-col gap-0.5 border-l border-[var(--seo-border)] pl-3">
+          {issue.urls.map((u) => (
+            <li key={u}>
+              <button
+                type="button"
+                onClick={() => onOpenUrl(u)}
+                className="truncate text-left text-xs text-[var(--seo-accent)] hover:underline"
+                title={u}
+              >
+                {pathnameOf(u)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
 }
 
 /** Compact Easy/Medium/Hard fix-effort counts for a result's issues. */
@@ -218,6 +271,13 @@ export default function ResultsPage() {
     router.push("/detail");
   }
 
+  function openDetailByUrl(url: string) {
+    const idx = results.findIndex((r) => r.url === url);
+    if (idx < 0) return;
+    setSelectedUrlIndex(idx);
+    router.push("/detail");
+  }
+
   function exportSiteH1Csv() {
     const rows = [["URL", "H1 Text", "H1 Count"]];
     for (const r of results) {
@@ -237,18 +297,9 @@ export default function ResultsPage() {
       else if (s >= 50) dist.warn++;
       else dist.poor++;
     }
-    // Top failing checks = most frequent issue titles across all URLs.
-    const freq = new Map<string, { count: number; severity: string }>();
-    for (const i of issues) {
-      const key = i.issue;
-      const cur = freq.get(key);
-      if (cur) cur.count++;
-      else freq.set(key, { count: 1, severity: i.severity });
-    }
-    const topFailing = [...freq.entries()]
-      .sort((a, b) => b[1].count - a[1].count)
-      .slice(0, 6)
-      .map(([issue, v]) => ({ issue, ...v }));
+    // Top failing checks: grouped by issue title, severity-first, each carrying
+    // the exact affected-page URLs so the user can drill straight into them.
+    const topFailing = issuesByTitle(results).slice(0, 8);
     return {
       avg: avgScore(results),
       totalIssues: issues.length,
@@ -298,14 +349,7 @@ export default function ResultsPage() {
               </div>
               <div className="flex flex-col gap-1.5">
                 {rollup.topFailing.map((f) => (
-                  <div key={f.issue} className="flex items-center justify-between gap-3 text-sm">
-                    <span className="truncate text-[var(--seo-text)]" style={{ borderLeft: `3px solid ${severityColor(f.severity).text}`, paddingLeft: 8 }}>
-                      {f.issue}
-                    </span>
-                    <span className="shrink-0 rounded-full bg-[var(--seo-card-hover)] px-2 py-0.5 text-xs font-medium text-[var(--seo-text-light)]">
-                      {f.count} pages
-                    </span>
-                  </div>
+                  <FailingIssueRow key={f.issue} issue={f} onOpenUrl={openDetailByUrl} />
                 ))}
               </div>
             </div>

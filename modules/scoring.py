@@ -23,16 +23,26 @@ PENALTY = {
     "Low":      2,
 }
 
-# SEMrush-style thematic groupings
+# SEMrush-style thematic groupings.
+# NOTE: matching is substring (`keyword.lower() in category.lower()`), so keywords
+# must be substrings of the EXACT category strings the check modules emit (grep
+# `"category":` across modules/*.py). Past bug: keyword "Headings" never matched
+# the emitted category "Heading Structure" ("headings" is not a substring of
+# "heading structure"), silently dumping every heading finding into "Other";
+# likewise the mobile categories (Responsiveness/Usability/Navigation/User
+# Experience/Layout) and "Security" (mixed-content) had no keyword and fell to
+# "Other". Keep this table in sync with lib/aggregate.ts's THEMES.
 THEMES = {
     "Crawlability": ["Accessibility", "Redirects", "Indexability", "URL Structure"],
     "Metadata":     ["Metadata"],
-    "Content":      ["Content", "Headings", "Readability"],
+    "Content":      ["Content", "Heading", "Readability"],
     "Links":        ["Internal Links", "External Links"],
-    "Technical":    ["Canonical", "Technical", "Mobile", "Performance"],
+    "Technical":    ["Canonical", "Technical", "Mobile", "Performance",
+                     "Responsiveness", "Usability", "Navigation",
+                     "User Experience", "Layout"],
     "Social & Schema": ["Structured Data", "Social SEO", "International SEO"],
     "Images":       ["Images", "Image SEO"],
-    "Site Health":  ["Site Health"],
+    "Site Health":  ["Site Health", "Security"],
     "Page-Specific": ["Course Content", "Blog Content", "Conversion"],
 }
 

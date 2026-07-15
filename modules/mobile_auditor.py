@@ -181,7 +181,11 @@ def _check_font_size(soup):
     for tag in soup.find_all(True):
         style = tag.get("style", "")
         for match in FONT_SIZE_PX_RE.finditer(style):
-            if float(match.group(1)) < 12:
+            # Ignore font-size:0 / sub-1px: that is an intentional layout technique
+            # (removing whitespace between inline-block children, icon-font hosts),
+            # not readable body text, so it isn't a mobile-legibility problem.
+            size_px = float(match.group(1))
+            if 1 <= size_px < 12:
                 small += 1
     return {
         "id": "font_size",
@@ -519,7 +523,12 @@ def _build_issues(checks, summary):
             "effort": "Low",
         })
 
-    if check_map.get("mobile_nav", {}).get("status") in ("warning", "fail"):
+    # Only flag when there is NO <nav> at all (status "fail"). The "warning" case
+    # (a <nav> exists but no hamburger/toggle class was found) is a false positive:
+    # a nav that collapses purely via CSS media queries, or uses an SVG/aria-label
+    # button with no matching class name, is fully mobile-friendly — static HTML
+    # simply can't see the responsive CSS.
+    if check_map.get("mobile_nav", {}).get("status") == "fail":
         issues.append({
             "issue": "No mobile navigation detected",
             "category": "Navigation",

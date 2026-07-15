@@ -22,14 +22,21 @@ HEADING_COLORS = {
 def _extract_headings(soup):
     """Extract all h1-h6 tags in document order with metadata.
 
-    Only headings inside the actual article content count: nav/header/footer/
-    aside are stripped first (matching modules/auditor.py::analyze_content's
-    scoping), so the tree doesn't pick up site-wide navigation or "related
+    Only headings inside the actual article content count: nav/footer/aside are
+    stripped first, so the tree doesn't pick up site-wide navigation or "related
     posts"/"you might also like" widget headings that typically follow the
     article's real conclusion.
+
+    NOTE: `<header>` is deliberately NOT stripped. The single most common
+    semantic-HTML pattern for a page/article title is `<header><h1>Title</h1>
+    </header>` (and `<article><header class="entry-header"><h1>…` in most CMS
+    themes). Stripping `<header>` removed that H1, so a perfectly valid page
+    with exactly one correctly-placed H1 was flagged with a Critical "Missing
+    H1 heading" (and spurious "No H2 despite H1" / skipped-level) false
+    positive. Site-chrome headings live in `<nav>`/`<footer>`, not `<header>`.
     """
     content_soup = soup.__class__(str(soup), "lxml")
-    for tag in content_soup(["nav", "header", "footer", "aside"]):
+    for tag in content_soup(["nav", "footer", "aside"]):
         tag.decompose()
 
     headings = []

@@ -176,6 +176,54 @@ def _parse_summary_reply(reply: str) -> tuple[str, list[str]]:
     return " ".join(explanation_lines[:4]), action_lines[:5]
 
 
+_SEVERITY_RANK = {"Critical": 0, "High": 1, "Medium": 2, "Warning": 3, "Low": 4}
+
+
+def _aggregate_issues(all_issues: list[dict]) -> tuple[list[dict], dict]:
+    """Deduplicate issues by title into a count-annotated, severity-sorted digest.
+
+    A sitewide audit passes the SAME issue title once per affected page (e.g.
+    "Missing meta description" x 180), so the raw list is mostly repeats. Feeding
+    those repeats to the model wasted the character budget on duplicates — the
+    truncation then silently dropped rare-but-severe issues off the end, and the
+    model couldn't state how many pages each issue hit. Aggregating by title
+    keeps every DISTINCT issue in the budget, records the affected-page count,
+    and lets the model cite accurate numbers.
+
+    Returns (aggregated_list, severity_totals). `aggregated_list` is sorted by
+    severity (Critical first) then affected-page count, each entry carrying
+    {issue, severity, category, recommendation, count, impact_score}.
+    """
+    by_severity = {"Critical": 0, "High": 0, "Medium": 0, "Warning": 0, "Low": 0}
+    agg: dict[str, dict] = {}
+    for issue in all_issues:
+        sev = issue.get("severity", "Low")
+        by_severity[sev] = by_severity.get(sev, 0) + 1
+        title = str(issue.get("issue", "")).strip()
+        if not title:
+            continue
+        entry = agg.get(title)
+        if entry:
+            entry["count"] += 1
+            # Keep the most severe classification seen for this title.
+            if _SEVERITY_RANK.get(sev, 4) < _SEVERITY_RANK.get(entry["severity"], 4):
+                entry["severity"] = sev
+        else:
+            agg[title] = {
+                "issue": title,
+                "severity": sev,
+                "category": issue.get("category", ""),
+                "recommendation": str(issue.get("recommendation", "")).strip(),
+                "count": 1,
+                "impact_score": issue.get("impact_score", 0),
+            }
+    ordered = sorted(
+        agg.values(),
+        key=lambda e: (_SEVERITY_RANK.get(e["severity"], 4), -e["count"], -e.get("impact_score", 0)),
+    )
+    return ordered, by_severity
+
+
 def explain_audit(all_issues: list[dict], seo_score: float, api_key: str,
                    url: str = "", context_label: str | None = None, model: str = _DEFAULT_MODEL) -> dict:
     """Summarise SEO audit issues in plain English.
@@ -190,36 +238,57 @@ def explain_audit(all_issues: list[dict], seo_score: float, api_key: str,
     if not api_key:
         return {"ok": False, "error": "Groq API key not configured"}
 
+    aggregated, by_severity = _aggregate_issues(all_issues)
+    is_sitewide = any(e["count"] > 1 for e in aggregated)
+
     lines = []
-    by_severity = {"Critical": 0, "High": 0, "Medium": 0, "Warning": 0, "Low": 0}
-    for issue in all_issues:
-        sev = issue.get("severity", "Low")
-        by_severity[sev] = by_severity.get(sev, 0) + 1
-        lines.append(f"[{sev.upper()}] {issue.get('category', '')}: {issue.get('issue', '')}")
+    for e in aggregated:
+        # "xN pages" only makes sense sitewide; on a single page every count is 1.
+        scope = f" (on {e['count']} pages)" if e["count"] > 1 else ""
+        rec = f" Fix: {e['recommendation']}" if e["recommendation"] else ""
+        lines.append(f"[{e['severity'].upper()}] {e['category']}: {e['issue']}{scope}.{rec}")
 
     summary_text = "\n".join(lines)
     if len(summary_text) > _MAX_AUDIT_CHARS:
         summary_text = summary_text[:_MAX_AUDIT_CHARS]
 
+    totals_line = ", ".join(f"{n} {sev}" for sev, n in by_severity.items() if n)
     site_context = context_label or (f"for {url}" if url else "")
     system_msg = (
-        "You are an expert technical SEO consultant. "
-        "Given a list of SEO audit issues, explain the findings clearly to a non-technical website owner. "
-        "Use plain English. Be direct and specific. Focus on what matters most and skip anything that passed."
+        "You are an expert technical SEO consultant. Given a deduplicated list of "
+        "SEO audit issues (each already annotated with its severity, category, how "
+        "many pages it affects, and the recommended fix), explain the findings "
+        "clearly to a non-technical website owner. Use plain English. Be specific "
+        "and reference the ACTUAL issues and their affected-page counts — do not "
+        "invent issues, numbers, or facts not present in the data. Prioritise by "
+        "severity and reach (an issue on many pages matters more than one on a "
+        "single page). Skip anything that passed."
+    )
+    scope_hint = (
+        "This is a sitewide audit; the counts show how many pages each issue affects. "
+        if is_sitewide else
+        "This is a single-page audit. "
     )
     user_msg = (
-        f"SEO health score: {seo_score}/100. Audit issues found {site_context}:\n\n"
+        f"SEO health score: {seo_score}/100. {scope_hint}"
+        f"Issue totals by severity: {totals_line or 'none'}. "
+        f"Deduplicated issues found {site_context}:\n\n"
         f"{summary_text or '(no issues found)'}\n\n"
         "Respond with ONLY a JSON object of this exact shape, no other text:\n"
-        '{"explanation": "2-3 sentence plain-English summary of overall technical SEO health", '
-        '"top_actions": ["one-line action starting with a verb", "..."]}\n'
-        "Include 3-5 items in top_actions, ordered by priority. Do not repeat the raw audit data back."
+        '{"explanation": "3-5 sentence plain-English assessment of overall technical '
+        'SEO health that names the most important problems and, where relevant, how '
+        'many pages they affect", '
+        '"top_actions": ["specific action starting with a verb, referencing the real '
+        'issue", "..."]}\n'
+        "Include 3-6 items in top_actions, ordered by priority (most severe / most "
+        "widespread first). Each action must correspond to an actual issue above. Do "
+        "not repeat the raw list back verbatim."
     )
 
     try:
         reply = _chat(
             [{"role": "system", "content": system_msg}, {"role": "user", "content": user_msg}],
-            api_key, model=model, max_tokens=700, json_mode=True,
+            api_key, model=model, max_tokens=900, json_mode=True,
         )
         explanation, top_actions = _parse_summary_reply(reply)
         return {

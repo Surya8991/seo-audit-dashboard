@@ -122,21 +122,37 @@ def check_robots_txt(url: str) -> dict:
 def check_sitemap(url: str) -> dict:
     issues = []
     parsed = urlparse(url)
-    sitemap_url = f"{parsed.scheme}://{parsed.netloc}/sitemap.xml"
+    root_base = f"{parsed.scheme}://{parsed.netloc}"
+    sitemap_url = f"{root_base}/sitemap.xml"
 
-    try:
-        r = safe_get(sitemap_url, headers=HEADERS, timeout=TIMEOUT, verify=True)
-    except (requests.RequestException, OSError) as exc:
-        logger.warning("check_sitemap fetch failed for %s: %s", sitemap_url, exc)
-        issues.append(_issue("Sitemap Unreachable", "Site Health", "Warning",
-            "Ensure sitemap.xml is reachable at the site root and submit it in Search Console.",
-            impact_score=4, effort="Low"))
-        return {"sitemap_url": sitemap_url, "exists": False, "url_count": 0, "issues": issues}
+    # Probe the two conventional locations. Yoast and many other CMSs serve the
+    # sitemap only at /sitemap_index.xml, so probing /sitemap.xml alone reported
+    # "Sitemap.xml Not Found" on sites that DO have a valid sitemap. (A robots.txt
+    # `Sitemap:` directive can declare an arbitrary path too; a full resolver
+    # lives in modules/sitemap_extractor.py — this lightweight health check just
+    # covers the two standard paths.)
+    r = None
+    fetch_failed = False
+    for candidate in (sitemap_url, f"{root_base}/sitemap_index.xml"):
+        try:
+            resp = safe_get(candidate, headers=HEADERS, timeout=TIMEOUT, verify=True)
+        except (requests.RequestException, OSError) as exc:
+            logger.warning("check_sitemap fetch failed for %s: %s", candidate, exc)
+            fetch_failed = True
+            continue
+        if resp.status_code == 200:
+            r, sitemap_url = resp, candidate
+            break
 
-    if r.status_code != 200:
-        issues.append(_issue("Sitemap.xml Not Found", "Site Health", "Warning",
-            "Add a sitemap.xml at the site root and submit it in Search Console to aid discovery.",
-            impact_score=4, effort="Low"))
+    if r is None:
+        # Only flag "Not Found" when a location was actually reached and returned
+        # non-200. A transient fetch failure (timeout/SSL) is inconclusive and,
+        # like check_robots_txt's exception path, degrades with no scored issue
+        # rather than asserting the sitemap is missing.
+        if not fetch_failed:
+            issues.append(_issue("Sitemap Not Found", "Site Health", "Warning",
+                "Add a sitemap.xml (or sitemap_index.xml) at the site root and submit it in Search Console to aid discovery.",
+                impact_score=4, effort="Low"))
         return {"sitemap_url": sitemap_url, "exists": False, "url_count": 0, "issues": issues}
 
     urls = []
@@ -400,12 +416,13 @@ def check_content_freshness(http_headers: dict, soup) -> dict:
 
     raw_date = visible_date or last_modified
     if not raw_date:
-        return {
-            "available": False, "issues": [_issue(
-                "No Content-Freshness Signals", "Content", "Low",
-                "Add an article:modified_time meta tag or Last-Modified header so freshness can be tracked.",
-                impact_score=2, effort="Low")],
-        }
+        # The majority of healthy pages expose neither an article:modified_time
+        # meta nor a Last-Modified header (normal for dynamic/CDN-served pages).
+        # Absence of an OPTIONAL freshness signal is not a defect, so degrade
+        # gracefully (available: False, no scored issue) like every other
+        # optional check here — emitting a scored "No Content-Freshness Signals"
+        # issue flagged nearly every page.
+        return {"available": False, "issues": []}
 
     parsed_dt = None
     if visible_date:
@@ -443,6 +460,7 @@ def check_content_freshness(http_headers: dict, soup) -> dict:
 def check_canonical_loop(url: str, soup) -> dict:
     MAX_HOPS = 5
     visited = [url]
+    verified_hops = 0  # canonical targets we actually fetched + re-parsed
     current_url, current_soup = url, soup
 
     for hop in range(MAX_HOPS):
@@ -473,10 +491,16 @@ def check_canonical_loop(url: str, soup) -> dict:
             from bs4 import BeautifulSoup
             current_soup = BeautifulSoup(r.content, "lxml")
             current_url = canon_url
+            verified_hops += 1
         except (requests.RequestException, OSError):
             break
 
-    if len(visited) > 1:
+    # Only warn about a real multi-hop chain, i.e. one where we CONFIRMED the
+    # canonical target has its own differing canonical (verified_hops >= 1). A
+    # single cross-URL canonical (A -> B) whose target B we couldn't fetch
+    # (SSRF-blocked, timeout) is not a chain — the prior code emitted a bogus
+    # "Canonical Chain (2 Hops)" for that normal, common case.
+    if len(visited) > 1 and verified_hops >= 1:
         chain = " → ".join(visited)
         return {"chain": visited, "issues": [_issue(
             f"Canonical Chain ({len(visited)} Hops)", "Canonical", "Warning",
@@ -494,15 +518,31 @@ def check_www_redirect(url: str) -> dict:
     parsed = urlparse(url)
     domain = parsed.netloc
     has_www = domain.startswith("www.")
+
+    # The www/non-www consolidation check only makes sense for an apex host
+    # (example.com) or its www. variant (www.example.com). For a deeper subdomain
+    # like blog.example.com the "alt" would be www.blog.example.com, which almost
+    # never exists, so the check reported a bogus "www.blog.example.com Does Not
+    # Resolve" warning on a host that resolves perfectly. Skip those.
+    host_no_www = domain[4:] if has_www else domain
+    if not has_www and host_no_www.count(".") != 1:
+        # Non-www AND not a plain 2-label apex (e.g. blog.example.com,
+        # example.co.uk) — can't reliably derive the www counterpart, so skip
+        # rather than probe a host that likely doesn't exist.
+        return {"consolidated": True, "issues": []}
+
     alt_domain = domain[4:] if has_www else f"www.{domain}"
     alt_url = f"{parsed.scheme}://{alt_domain}/"
 
     try:
         r = safe_get(alt_url, headers=HEADERS, timeout=8, verify=True)
     except (requests.RequestException, OSError):
-        return {"issues": [_issue(f"{alt_domain} Does Not Resolve", "Site Health", "Warning",
-            "Add a DNS record and redirect so both www and non-www variants reach your site.",
-            impact_score=4, effort="Medium")]}
+        # A timeout, SSL error, or connection blip does NOT prove the variant
+        # doesn't resolve (the domain may resolve fine but be slow / have a cert
+        # quirk). Only a real DNS-resolution failure would, and we can't cleanly
+        # distinguish it here, so degrade gracefully with no scored issue rather
+        # than assert a claim ("Does Not Resolve") that may be false.
+        return {"consolidated": True, "issues": []}
 
     final_netloc = urlparse(r.url).netloc
     if final_netloc == domain:

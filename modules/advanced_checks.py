@@ -260,9 +260,21 @@ def analyze_technical_seo(soup, url: str, page_size_bytes: int, response_time: f
         })
 
     # ── Mixed content ─────────────────────────────────────────────────────
+    # A <link> is only a loaded sub-resource for certain rel values (stylesheet,
+    # preload/modulepreload/prefetch, import). rel="canonical"/"alternate"/
+    # "prev"/"next"/"dns-prefetch"/"preconnect"/"icon"/"manifest" are metadata or
+    # connection hints, NOT rendered resources, and do NOT trigger a browser
+    # mixed-content warning. Counting them flagged a Critical "Mixed Content" on
+    # the extremely common case of an HTTPS page whose canonical still points to
+    # http:// — a false positive. Only real resource rels count.
+    _RESOURCE_LINK_RELS = {"stylesheet", "preload", "modulepreload", "prefetch", "import"}
     mixed_content_count = 0
     if is_https and soup:
         for tag in soup.find_all(["img", "script", "link", "audio", "video", "source", "iframe"]):
+            if tag.name == "link":
+                rels = {r.lower() for r in (tag.get("rel") or [])}
+                if not (rels & _RESOURCE_LINK_RELS):
+                    continue
             for attr in ["src", "href", "data-src"]:
                 val = tag.get(attr, "") or ""
                 if val.startswith("http://"):
@@ -476,12 +488,20 @@ def analyze_advanced(soup, url, http_headers=None, page_size_bytes=0, response_t
     has_charset = bool(charset_tag)
     charset_value = (charset_tag.get("charset") or "").upper() if charset_tag else ""
 
-    if not has_charset:
+    # A charset sent in the HTTP `Content-Type: text/html; charset=utf-8` response
+    # header is fully valid and browser-honored — a <meta charset> is then just a
+    # nicety, not a requirement. The prior check looked only at the markup, so any
+    # page relying on the (very common) server-sent header was wrongly flagged
+    # "Missing Charset Declaration".
+    _hdrs = {k.lower(): (v or "") for k, v in (http_headers or {}).items()}
+    header_has_charset = "charset=" in _hdrs.get("content-type", "").lower()
+
+    if not has_charset and not header_has_charset:
         issues.append({
             "issue": "Missing Charset Declaration",
             "category": "Technical",
             "severity": "Medium",
-            "recommendation": 'Add <meta charset="UTF-8"> as the first element inside <head>.',
+            "recommendation": 'Declare the charset via <meta charset="UTF-8"> (first element in <head>) or the Content-Type response header.',
             "impact_score": 5,
             "effort": "Low",
         })
@@ -553,6 +573,13 @@ def analyze_advanced(soup, url, http_headers=None, page_size_bytes=0, response_t
 
     for tag in schema_tags:
         raw_text = tag.get_text(strip=True)
+        # An empty or whitespace-only <script type="application/ld+json"> is a
+        # common CMS/template artifact (a placeholder that rendered empty). It is
+        # not broken structured data, but json.loads("") raises JSONDecodeError,
+        # so the prior code emitted a High "Invalid JSON-LD Schema" for a page
+        # with no schema problem at all. Skip empty bodies.
+        if not raw_text:
+            continue
         try:
             data = json.loads(raw_text)
             items = data if isinstance(data, list) else [data]
@@ -606,11 +633,15 @@ def analyze_advanced(soup, url, http_headers=None, page_size_bytes=0, response_t
     has_favicon = bool(favicon)
 
     if not has_favicon:
+        # No <link rel="icon"> tag, but browsers (and Google's SERP favicon)
+        # fall back to a /favicon.ico at the site root, which many sites serve
+        # without any <link> tag — so this is "not declared", not confirmed
+        # "Missing". Wording reflects that to avoid a false claim.
         issues.append({
-            "issue": "Missing Favicon",
+            "issue": "No Favicon Link Declared",
             "category": "Technical",
             "severity": "Low",
-            "recommendation": "Add a favicon (32×32 PNG minimum) for brand recognition in browser tabs and search results.",
+            "recommendation": 'Declare a favicon with <link rel="icon" href="/favicon.ico">. If you already serve /favicon.ico at the root, browsers will still use it, but an explicit tag lets you control the format and size.',
             "impact_score": 2,
             "effort": "Low",
         })

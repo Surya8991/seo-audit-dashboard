@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from modules.ai_assist import (
     _MAX_CHAT_CONTEXT_CHARS,
     _MAX_CHAT_TURNS,
+    _aggregate_issues,
     _chat,
     _parse_summary_reply,
     _trim_chat_messages,
@@ -16,6 +17,33 @@ from modules.ai_assist import (
     explain_audit,
     suggest_fix,
 )
+
+
+def _mk(issue, severity="Medium", category="Metadata"):
+    return {"issue": issue, "severity": severity, "category": category,
+            "recommendation": "fix", "impact_score": 5}
+
+
+def test_aggregate_dedupes_by_title_with_page_counts():
+    issues = [_mk("Missing meta description") for _ in range(180)]
+    issues += [_mk("H1 too long", "Warning") for _ in range(120)]
+    issues += [_mk("Blocked by robots.txt", "Critical", "Site Health") for _ in range(3)]
+    agg, totals = _aggregate_issues(issues)
+    assert len(agg) == 3  # 303 raw rows collapse to 3 distinct issues
+    counts = {e["issue"]: e["count"] for e in agg}
+    assert counts["Missing meta description"] == 180
+    assert counts["Blocked by robots.txt"] == 3
+    assert totals["Medium"] == 180 and totals["Critical"] == 3
+
+
+def test_aggregate_sorts_severe_first_even_when_rare():
+    # The rare Critical (3 pages) must sort ABOVE the frequent Medium (180 pages)
+    # so it survives the character-budget truncation instead of dropping off.
+    issues = [_mk("Missing meta description") for _ in range(180)]
+    issues += [_mk("Blocked by robots.txt", "Critical", "Site Health") for _ in range(3)]
+    agg, _ = _aggregate_issues(issues)
+    assert agg[0]["issue"] == "Blocked by robots.txt"
+    assert agg[0]["severity"] == "Critical"
 
 
 def test_trim_keeps_only_most_recent_turns():

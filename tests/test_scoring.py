@@ -16,6 +16,32 @@ def _issue(category="Metadata", severity="Warning", impact=5):
             "recommendation": "fix it", "impact_score": impact, "effort": "Low"}
 
 
+def test_emitted_categories_do_not_fall_into_other_bucket():
+    # Every category string the check modules actually emit must map to a real
+    # theme, not the catch-all "Other". These 7 used to fall through: Heading
+    # Structure (keyword was "Headings", not a substring of "heading structure"),
+    # the mobile-UX categories, and Security (mixed content).
+    emitted = [
+        "Heading Structure", "Security", "Responsiveness", "Usability",
+        "Navigation", "User Experience", "Layout",
+        # spot-check ones that were already mapped, to guard against regressions
+        "Metadata", "Image SEO", "Mobile SEO", "Internal Links", "Site Health",
+    ]
+    grouped = get_thematic_issues([_issue(category=c) for c in emitted])
+    assert "Other" not in grouped, f"unmapped categories fell into Other: {grouped.get('Other')}"
+
+
+def test_heading_and_security_map_to_expected_themes():
+    grouped = get_thematic_issues([
+        _issue(category="Heading Structure"),
+        _issue(category="Security"),
+        _issue(category="Responsiveness"),
+    ])
+    assert any("Heading Structure problem" == i["issue"] for i in grouped.get("Content", []))
+    assert any("Security problem" == i["issue"] for i in grouped.get("Site Health", []))
+    assert any("Responsiveness problem" == i["issue"] for i in grouped.get("Technical", []))
+
+
 def test_perfect_result_scores_100():
     result = {"status_code": 200}
     out = calculate_seo_score(result)

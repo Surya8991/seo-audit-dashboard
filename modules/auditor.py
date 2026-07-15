@@ -512,9 +512,12 @@ def analyze_images(soup):
             "Add descriptive alt text to every image for accessibility and image SEO.",
             impact_score=7, effort="Low"))
     if empty_alt:
-        issues.append(_issue(f"{len(empty_alt)} Image(s) with Empty Alt Text", "Images", "Medium",
-            "Replace empty alt='' with meaningful descriptions unless they are purely decorative.",
-            impact_score=5, effort="Low"))
+        # alt="" is the CORRECT, WCAG-recommended markup for purely decorative
+        # images, so this is advisory (Low), not a confirmed problem: only act on
+        # it for images that actually convey meaning.
+        issues.append(_issue(f"{len(empty_alt)} Image(s) with Empty Alt Text (verify decorative)", "Images", "Low",
+            "Empty alt='' is correct for decorative images. Add a description only for images that convey meaning.",
+            impact_score=2, effort="Low"))
     if poor_alt:
         issues.append(_issue(f"{len(poor_alt)} Image(s) with Generic Alt Text", "Images", "Low",
             "Replace generic alt text like 'image.jpg' with descriptive phrases that include keywords.",
