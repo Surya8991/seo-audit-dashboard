@@ -25,12 +25,11 @@ prior standalone Streamlit SEO audit tool ported in on top.
   The former standalone `links`, `headings`, and `performance` pages are folded
   into `app/detail/page.tsx` as tabs backed by `components/detail/LinksView.tsx`,
   `HeadingsView.tsx`, and `PerformanceView.tsx`. Report export is NOT a page: it
-  was an action bar (`components/ExportBar.tsx`, still exists, POSTs to
-  `api/export.py`) on the Results page; **currently NOT rendered** because
-  POSTing the full `results` array as one JSON body 413s past Vercel's
-  ~4.5MB serverless request-body limit on anything but a tiny result set
-  (see "Known issues" below). The old `app/export/page.tsx` was removed. Nav
-  is 4 items
+  is an action bar (`components/ExportBar.tsx`) on the Results page. CSV/JSON
+  are generated entirely client-side (`lib/reportExport.ts`), no network call,
+  no size limit; Excel/PDF still POST to `api/export.py` but the payload is
+  trimmed + gzip-compressed first (see the gotcha below, this used to 413).
+  The old `app/export/page.tsx` was removed. Nav is 4 items
   (Dashboard, Technical Audit, Results, Settings): results and detail are one
   section (`/detail` highlights "Results", see `resolveActiveHref` in
   `components/AppShell.tsx`); the list routes to the detail via
@@ -282,20 +281,35 @@ Edstellar sitemap/pages and take 30+ seconds. Opt in with `RUN_LIVE_TESTS=1`.
   write path for audit results; `AuditContext` migrates any legacy
   localStorage data on first load, then removes it. If you ever see the
   quota error again, it means something is bypassing `AuditContext`.
-- **Export is hidden (413), not fixed, as of Session 19.** `<ExportBar
-  results={results} />` was removed from `app/results/page.tsx`'s render
-  (the component + `api/export.py` + `modules/report_generator.py` are
-  untouched and still work) because POSTing the entire `results` array as
-  one JSON body 413s on Vercel's ~4.5MB serverless request-body limit for
-  anything beyond a handful of audited URLs (each full `audit_url()` result
-  is 50-200KB, same growth problem the IndexedDB migration above solved
-  client-side, but this is server-side and there's no equivalent fix yet).
-  Before re-enabling: either (a) chunk/stream the export request, (b) have
-  the client persist results server-side first and export by reference
-  instead of re-posting the whole payload, or (c) generate the report
-  entirely client-side (JSON/CSV need no Python dependency; xlsx/pdf would
-  need a JS library). Don't just re-add the button without addressing this,
-  it will 413 again on any non-trivial result set.
+- **Export 413 fix (Session 20): CSV/JSON are client-only, Excel/PDF are
+  trimmed + gzipped.** POSTing the entire `results` array as one JSON body
+  used to 413 past Vercel's ~4.5MB serverless request-body limit on anything
+  beyond a handful of audited URLs (each full `audit_url()` result is
+  50-200KB, same growth problem the IndexedDB migration above solved
+  client-side, but this was server-side). Fixed in `lib/reportExport.ts`:
+  - `buildResultsCsvRows`/`downloadResultsJson` generate CSV/JSON entirely in
+    the browser (the data's already in memory) and never touch the network,
+    so there is no size limit for those two formats at all.
+  - `trimResultForServerExport` strips every field
+    `modules/report_generator.py` doesn't actually read (`image_detail`,
+    `advanced`, `site_health`, `mobile_audit`, paragraph HTML, the checklist's
+    `groups` key, ...) before Excel/PDF requests, then `gzipJson` compresses
+    the trimmed payload (native `CompressionStream`, no new dependency).
+    Measured: two results padded with ~100KB of realistic junk data each
+    compressed to **1.8KB** total. `api/export.py::decode_request_body`
+    gunzips the body when `Content-Encoding: gzip` is set.
+  - A client-side size guard (`MAX_EXPORT_PAYLOAD_BYTES`, 4MB) checks the
+    compressed size before sending and shows a clear message ("try CSV/JSON
+    instead") rather than letting an unusually large export hit a bare 413.
+  - `lib/format.ts::downloadCsv` now sanitizes every cell via
+    `sanitizeCsvCell` (mirrors `report_generator.py`'s `_sanitize_cell`),
+    which also fixed the same un-sanitized formula-injection gap in the
+    Links/Headings/Image-SEO CSV exports (`downloadCsv` is shared by all of
+    them), not just the new Results export.
+  - If you add a new field to `AuditResult` that Excel/PDF need,
+    add it to `trimResultForServerExport` too, or it will silently be
+    dropped from those two export formats (CSV/JSON always get the full
+    object, only the server-bound payload is trimmed).
 - Don't build a second dark-mode toggle from scratch. `lib/useTheme.ts` is
   the single source of truth (pub-sub so every mounted toggle stays in sync
   live); both `components/ThemeToggle.tsx` (sidebar) and the Settings page's

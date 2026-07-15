@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAudit } from "@/lib/state/AuditContext";
 import { Card, EmptyState, PageHeader, ScoreBadge, ScoreCircle, StatusPill } from "@/components/ui";
+import { ExportBar } from "@/components/ExportBar";
 import { allIssuesOf, avgScore } from "@/lib/aggregate";
 import { difficultyBreakdown } from "@/lib/difficulty";
 import { severityColor } from "@/lib/format";
@@ -223,6 +224,8 @@ export default function ResultsPage() {
           </button>
         </div>
       </Card>
+
+      <ExportBar results={results} />
 
       <div className="flex flex-col gap-4">
         {groups.map((g) => {

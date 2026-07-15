@@ -24,7 +24,7 @@ export interface TechnicalAuditChecklist {
     site_health: ChecklistItem[];
   };
   checks: ChecklistItem[];
-  summary: { total: number; pass: number; warning: number; fail: number };
+  summary: { total: number; pass: number; warning: number; fail: number; info: number };
 }
 
 // The Python /api/audit endpoint returns the full audit_url() result almost

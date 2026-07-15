@@ -85,13 +85,11 @@ summary from this project's standalone Streamlit SEO audit tool ported in as
 | **Common Issues & Fixes** | Any issue matching a curated knowledge base (~20 of the most common SEO issues) gets a "Learn more →" expansion: what it is, why it matters, SEO impact, user impact, and the recommended fix, grounded in current guidance (Google Search Central, web.dev) |
 
 ### Export
-Temporarily hidden from the Results page: exporting more than a few URLs
-posts the full result set as one JSON body, which exceeds Vercel's ~4.5MB
-serverless request-body limit and returns `413 Payload Too Large`. The
-backend (`api/export.py`, `modules/report_generator.py`) and the UI
-(`components/ExportBar.tsx`) both still work and are unchanged; only the
-button on the Results page was removed until the request is chunked or
-switched to per-format server-side generation. See `PROJECT_LOG.md`.
+Report export lives as an action bar on the **Results** page. CSV and JSON
+are generated entirely in your browser (no upload, no size limit); Excel and
+PDF are still generated server-side for colour-coding/formatting, with the
+request trimmed to only the needed fields and gzip-compressed first, so
+large result sets no longer 413.
 
 | Format | Contents |
 |---|---|

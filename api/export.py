@@ -1,3 +1,4 @@
+import gzip
 import json
 import os
 import sys
@@ -24,14 +25,29 @@ def _send_json(handler, status, data):
     handler.wfile.write(body)
 
 
+def decode_request_body(raw_body: bytes, content_encoding: str | None) -> dict:
+    """Gunzip the body if the client compressed it, then parse as JSON.
+
+    The frontend gzip-compresses the (already-trimmed) results payload for
+    xlsx/pdf exports before sending it (see lib/reportExport.ts::gzipJson),
+    since a large uncompressed payload can exceed Vercel's serverless
+    request-body limit. Raises json.JSONDecodeError on invalid JSON, same as
+    the caller's previous bare `json.loads`.
+    """
+    body = raw_body or b"{}"
+    if (content_encoding or "").lower() == "gzip":
+        body = gzip.decompress(body)
+    return json.loads(body or b"{}")
+
+
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             length = int(self.headers.get("Content-Length", 0) or 0)
-            body = self.rfile.read(length) if length else b"{}"
+            raw_body = self.rfile.read(length) if length else b""
             try:
-                payload = json.loads(body or b"{}")
-            except json.JSONDecodeError:
+                payload = decode_request_body(raw_body, self.headers.get("Content-Encoding"))
+            except (json.JSONDecodeError, OSError):
                 _send_json(self, 400, {"error": "request body must be valid JSON"})
                 return
 

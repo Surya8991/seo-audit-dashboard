@@ -3,18 +3,33 @@
 import { useState } from "react";
 import type { AuditResult } from "@/lib/types";
 import { Card } from "@/components/ui";
+import { downloadCsv } from "@/lib/format";
+import {
+  buildResultsCsvRows,
+  downloadResultsJson,
+  gzipJson,
+  MAX_EXPORT_PAYLOAD_BYTES,
+  trimResultForServerExport,
+} from "@/lib/reportExport";
 
 const FORMATS = [
-  { id: "csv", label: "CSV", desc: "Flat summary, one row per URL." },
+  { id: "csv", label: "CSV", desc: "Flat summary, one row per URL. Generated in your browser." },
   { id: "xlsx", label: "Excel", desc: "Summary, Issues, Links, Checklist sheets." },
   { id: "pdf", label: "PDF", desc: "Formatted report for sharing." },
-  { id: "json", label: "JSON", desc: "Full raw audit data." },
+  { id: "json", label: "JSON", desc: "Full raw audit data. Generated in your browser." },
 ] as const;
 
 /**
  * Compact export control (format picker + downloads). Lives on the Results
  * page: exporting is an action on the current results, not a separate section.
- * POSTs to /api/export (modules/report_generator.py) and downloads the blob.
+ *
+ * CSV and JSON are generated entirely client-side (the browser already has
+ * `results` in memory), so they never touch the network and have no payload
+ * size limit. Excel and PDF still need server-side generation (xlsxwriter/
+ * fpdf2), so those POST a trimmed + gzip-compressed payload to /api/export;
+ * see lib/reportExport.ts for why (a full, uncompressed payload used to 413
+ * past Vercel's ~4.5MB serverless request-body limit on anything but a tiny
+ * result set).
  */
 export function ExportBar({ results }: { results: AuditResult[] }) {
   const [loadingFormat, setLoadingFormat] = useState<string | null>(null);
@@ -24,10 +39,32 @@ export function ExportBar({ results }: { results: AuditResult[] }) {
     setLoadingFormat(format);
     setError(null);
     try {
+      if (format === "csv") {
+        downloadCsv("seo-audit-report.csv", buildResultsCsvRows(results));
+        return;
+      }
+      if (format === "json") {
+        downloadResultsJson(results);
+        return;
+      }
+
+      const trimmed = results.map(trimResultForServerExport);
+      const gzipped = await gzipJson({ results: trimmed, format });
+      if (gzipped.byteLength > MAX_EXPORT_PAYLOAD_BYTES) {
+        setError(
+          `This export is too large (${(gzipped.byteLength / 1024 / 1024).toFixed(1)}MB compressed) ` +
+            "for Excel/PDF generation. Try CSV or JSON instead, which have no size limit, or export fewer URLs.",
+        );
+        return;
+      }
+
       const res = await fetch("/api/export", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ results, format }),
+        headers: { "Content-Type": "application/json", "Content-Encoding": "gzip" },
+        // TS's lib.dom BlobPart typing is overly strict about the Uint8Array's
+        // backing buffer generic (ArrayBuffer vs ArrayBufferLike); gzipJson
+        // always returns a plain-ArrayBuffer-backed Uint8Array, so this is safe.
+        body: new Blob([gzipped as unknown as BlobPart]),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
