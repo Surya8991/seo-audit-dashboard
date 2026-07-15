@@ -21,7 +21,12 @@ prior standalone Streamlit SEO audit tool ported in on top.
 ## Key directories/files
 - `app/`: Next.js pages: dashboard (`/`), **`technical-audit`** (single URL,
   sitemap, crawl, or CSV-paste multi-input audit, formerly `new-audit`),
-  results (domain-grouped list), detail (per-URL drill-down), settings.
+  results (flat list with a **Type column**), detail (per-URL drill-down), settings.
+  (Session 25 removed the old collapsible domain/section hierarchy; the Results
+  table is now flat, sorted, with a Type column and Type filter — the category
+  comes from `lib/pageCategory.ts::categorizeUrl(url, audit_type)`, keyed off the
+  URL path segment (Course/Blog/Topic/Category/Tag/Type/Static/Home) with the
+  backend `audit_type` as a fallback.)
   The former standalone `links`, `headings`, and `performance` pages are folded
   into `app/detail/page.tsx` as tabs backed by `components/detail/LinksView.tsx`,
   `HeadingsView.tsx`, and `PerformanceView.tsx`. Report export is NOT a page: it

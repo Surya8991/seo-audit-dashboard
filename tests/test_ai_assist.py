@@ -191,6 +191,27 @@ def test_suggest_fix_returns_error_when_suggestion_empty(mock_chat):
     assert result["ok"] is False
 
 
+@patch("modules.ai_assist._chat")
+def test_suggest_fix_unwraps_double_nested_object(mock_chat):
+    # Some models put another {"suggestion": …} object inside the suggestion.
+    inner = json.dumps({"suggestion": "<meta property='og:title' content='X'/>", "rationale": "why"})
+    mock_chat.return_value = json.dumps({"suggestion": inner, "rationale": ""})
+    result = suggest_fix("Missing Open Graph Tags", {"url": "https://example.com/"}, api_key="fake-key")
+    assert result["ok"] is True
+    assert result["suggestion"].startswith("<meta")
+    assert result["rationale"] == "why"
+
+
+@patch("modules.ai_assist._chat")
+def test_suggest_fix_unwraps_nested_array(mock_chat):
+    # The alt-text case: the model returns an ARRAY of {suggestion} objects.
+    arr = json.dumps([{"suggestion": "Alt one"}, {"suggestion": "Alt two"}])
+    mock_chat.return_value = json.dumps({"suggestion": arr, "rationale": ""})
+    result = suggest_fix("Missing alt text on 2 image(s)", {"url": "https://example.com/"}, api_key="fake-key")
+    assert result["ok"] is True
+    assert result["suggestion"] == "Alt one\nAlt two"
+
+
 @patch("modules.ai_assist._chat", side_effect=RuntimeError("Groq API unavailable (HTTP 500)"))
 def test_suggest_fix_returns_error_on_api_failure(mock_chat):
     result = suggest_fix("Missing Meta Description", {}, api_key="fake-key")

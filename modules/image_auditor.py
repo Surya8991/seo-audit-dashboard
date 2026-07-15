@@ -4,7 +4,7 @@ Advanced image SEO analysis for SEO Technical Audit Dashboard.
 """
 
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urljoin, urlparse
 
@@ -77,14 +77,23 @@ def _file_size_label(size_bytes):
 
 
 def _is_keyword_stuffed(alt_text):
-    """Flag if alt text > 100 chars or if more than 6 words are all the same."""
-    if len(alt_text) > 100:
+    """Keyword stuffing is REPEATING keywords to game ranking, not merely long
+    or descriptive alt text. The prior heuristic flagged any alt over 100 chars,
+    which mislabeled long *descriptive* alt (e.g. "Team collaborating in a modern
+    office during a corporate leadership training workshop") as stuffed — a false
+    positive seen across the site. Detect real repetition instead: a content word
+    repeated 3+ times, or low lexical diversity on a multi-word alt.
+    """
+    words = re.findall(r"[a-z0-9]+", alt_text.lower())
+    if len(words) < 5:
+        return False
+    counts = Counter(words)
+    # A meaningful content word (len > 3, i.e. not "the"/"and"/"of") repeated 3+ times.
+    if any(count >= 3 and len(word) > 3 for word, count in counts.items()):
         return True
-    words = alt_text.lower().split()
-    if len(words) > 6:
-        unique = set(words)
-        if len(unique) == 1:
-            return True
+    # Very low unique-word ratio on a longer alt = padded with repeats.
+    if len(words) >= 8 and len(set(words)) / len(words) < 0.5:
+        return True
     return False
 
 

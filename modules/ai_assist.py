@@ -316,17 +316,28 @@ def suggest_fix(issue_title: str, page_context: dict, api_key: str, model: str =
             suggestion = str(data.get("suggestion", "")).strip()
             rationale = str(data.get("rationale", "")).strip()
             # Some models (seen on the multi-line og/alt outputs) double-wrap:
-            # they put ANOTHER {"suggestion": ..., "rationale": ...} JSON object
-            # inside the `suggestion` string. Unwrap one level so the user gets
-            # the clean draft, not escaped JSON.
-            if suggestion.startswith("{") and '"suggestion"' in suggestion:
+            # they put ANOTHER JSON value inside the `suggestion` string — either
+            # a {"suggestion": …, "rationale": …} object, or an ARRAY of such
+            # objects / strings (the alt-text case, which asks for 2-3 lines).
+            # Unwrap one level so the user gets the clean draft, not escaped JSON.
+            stripped = suggestion.strip()
+            if stripped[:1] in ("{", "["):
                 try:
-                    inner = json.loads(suggestion)
-                    if isinstance(inner, dict) and inner.get("suggestion"):
-                        suggestion = str(inner.get("suggestion", "")).strip()
-                        rationale = rationale or str(inner.get("rationale", "")).strip()
+                    inner = json.loads(stripped)
                 except (json.JSONDecodeError, TypeError):
-                    pass
+                    inner = None
+                if isinstance(inner, dict) and inner.get("suggestion"):
+                    suggestion = str(inner.get("suggestion", "")).strip()
+                    rationale = rationale or str(inner.get("rationale", "")).strip()
+                elif isinstance(inner, list):
+                    parts = []
+                    for el in inner:
+                        if isinstance(el, dict) and el.get("suggestion"):
+                            parts.append(str(el["suggestion"]).strip())
+                        elif isinstance(el, str) and el.strip():
+                            parts.append(el.strip())
+                    if parts:
+                        suggestion = "\n".join(parts)
         except (json.JSONDecodeError, AttributeError, TypeError):
             suggestion, rationale = reply.strip(), ""
         if not suggestion:

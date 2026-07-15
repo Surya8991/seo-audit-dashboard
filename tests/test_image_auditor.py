@@ -12,8 +12,24 @@ from modules.image_auditor import (
     BAD_NAMING_RE,
     _compute_summary,
     _extract_image_data,
+    _is_keyword_stuffed,
     analyze_images_advanced,
 )
+
+
+def test_keyword_stuffed_only_flags_real_repetition():
+    # Long DESCRIPTIVE alt is not stuffing (this was the false positive: any alt
+    # over 100 chars was flagged).
+    assert not _is_keyword_stuffed(
+        "A team of professionals collaborating in a modern office during a corporate "
+        "leadership development workshop session"
+    )
+    assert not _is_keyword_stuffed("Ransomware prevention training course overview diagram")
+    # Genuine keyword stuffing = a keyword repeated to game ranking.
+    assert _is_keyword_stuffed(
+        "training training training corporate training leadership training course training"
+    )
+    assert _is_keyword_stuffed("seo seo seo seo audit seo tool seo")
 
 
 def _summary(html):
