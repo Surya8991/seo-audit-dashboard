@@ -41,11 +41,11 @@ export async function fetchDomainHealth(
       if (signal?.aborted) return;
       const host = hosts[cursor++];
       try {
-        const res = await fetch("/api/site-health", {
+        const res = await fetch("/api/audit-pipeline", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           signal,
-          body: JSON.stringify({ url: firstUrlForHost.get(host) }),
+          body: JSON.stringify({ action: "site-health", url: firstUrlForHost.get(host) }),
         });
         const data = await res.json();
         out[host] = res.ok ? data.domain_health ?? null : null;

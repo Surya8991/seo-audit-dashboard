@@ -63,59 +63,85 @@ prior standalone Streamlit SEO audit tool ported in on top.
   expansion, shown only when a KB entry matches; NOT exhaustive coverage of
   every possible issue string by design. Guarded by
   `lib/commonIssuesKB.test.ts`.
-- `api/audit.py`: runs a full audit for one URL, returns `modules.auditor.audit_url()` almost verbatim
-- `api/sitemap.py`: resolves a sitemap (or bare domain) to a URL list for the
-  sitewide Technical Audit; see "Sitewide/bulk audit architecture" below
-- `api/crawl.py`: discovery-only BFS crawl (no sitemap needed). Given a seed
-  URL, follows internal links to build a URL list, same contract shape as
-  `api/sitemap.py` (`{urls, total_found, capped}`). Always calls
-  `crawl_site(..., run_full_audit=False)`; per-page SEO audits happen via the
-  same client orchestrator as the other bulk modes, not inside this endpoint.
-- **AI layer** (`modules/ai_assist.py`, all Groq): three entry points, all via
-  the shared `_chat()` HTTP helper (3x retry on 429/5xx, optional
-  `json_mode=True` requests Groq's `response_format: json_object` with an
-  automatic one-retry fallback to plain text if the model/account 400s on it).
-  - `explain_audit(all_issues, seo_score, api_key, url="", context_label=None)`
-    → `api/ai-summary.py`: plain-English summary + top actions, JSON-mode
-    parsed via `_parse_summary_reply` (falls back to the legacy numbered-list
-    regex parse if JSON parsing fails). `context_label` overrides the default
-    "for {url}" phrasing — the Results page's sitewide summary passes
-    "across N audited pages (sitewide)" with the aggregated issue list
-    instead of one page's. Rendered via the shared
-    `components/AiSummaryCard.tsx` on both Detail (one URL) and Results
-    (sitewide rollup), cached per `cacheKey` in `AuditContext`'s
-    `aiSummaryCache` (see `lib/aiSummaryCache.ts::fingerprintForSummary`) so
-    reopening unchanged data doesn't re-spend an API call.
-  - `chat_with_assistant(messages, api_key, audit_context=None)` →
-    `api/chat.py`: multi-turn chatbot, backing the global
-    `components/ChatWidget.tsx` floating widget (rendered in `AppShell.tsx`,
-    on every page). Defaults to app-help Q&A; on `/results`/`/detail` with
-    results loaded, attaches `auditContext` (url/score/top issues) **plus**
-    `kb_notes` — matched entries from `lib/commonIssuesKB.ts` for the top
-    issues (`ChatWidget.tsx::buildKbNotes`), so the assistant answers from
-    the app's own curated explanations instead of general model knowledge
-    for issues the KB covers. Conversation history is resent each turn (no
-    server-side session) and bounded on both ends
-    (`_MAX_CHAT_TURNS`/`_MAX_CHAT_CONTEXT_CHARS` in `ai_assist.py`,
-    `MAX_MESSAGES`/`MAX_MESSAGE_CHARS` in `api/chat.py`). The widget
-    progressively reveals a reply client-side (`ChatWidget.tsx::startReveal`,
-    triggered from the `send()` handler, not a `useEffect`, to dodge both a
-    visual flash and the `react-hooks/set-state-in-effect` lint rule) — true
-    server-side token streaming isn't reliably supported on Vercel's classic
-    Python (`BaseHTTPRequestHandler`) runtime these `api/*.py` files use.
-  - `suggest_fix(issue_title, page_context, api_key)` → `api/fix-suggestion.py`:
-    drafts an actual ready-to-use replacement (e.g. a real meta description)
-    for a **narrow, well-defined set of issue types** — see
-    `_FIX_TARGET_PATTERNS`/`detect_fix_target` (title/description/H1 only).
-    `lib/fixSuggestable.ts::detectFixTarget` mirrors the same patterns
-    client-side so `components/ui.tsx::IssueRow` only shows "✨ Suggest a
-    fix" for issues it can actually draft for, without a round-trip just to
-    find out. Only wired up where a single concrete page is in scope (Detail
-    page passes `pageContext` — title/description/h1/content snippet from
-    `r.metadata`/`r.heading_detail`/`r.content.intro_paragraphs` — into every
-    `IssueRow`); there's no sitewide equivalent since a fix draft needs one
-    page's real content to ground in, not an aggregate.
-- `api/pagespeed.py`, `api/export.py`, `api/config-status.py`
+- **API routes are consolidated into 3 files, dispatched by an `"action"`
+  field in the request** (`api/audit-pipeline.py`, `api/ai.py`, plus
+  standalone `api/export.py`) — **not** one file per endpoint. This used to
+  be 9 separate `api/*.py` files; Vercel's Python builder reinstalls +
+  recompiles the entire `requirements.txt` independently for every
+  `api/*.py` file at build time (~14s each, not shared), so 9 files added
+  ~2 minutes of pure dependency-install time to every deploy for no reason —
+  none of them have different dependencies, they all draw from the same
+  `requirements.txt`. Consolidating to 3 cut that by ~100s. **When adding a
+  new server-side endpoint, add an action to one of these two files (or
+  `api/export.py` if it's a binary/file-download response) — do NOT create a
+  new top-level `api/*.py` file**, or the build-time regression comes back.
+  - `api/audit-pipeline.py` (`maxDuration` 90, the max of any action's need):
+    actions `"audit"` (single-URL audit, returns `modules.auditor.audit_url()`
+    almost verbatim), `"sitemap"` (resolves a sitemap/bare domain to a URL
+    list, see "Sitewide/bulk audit architecture" below), `"crawl"`
+    (discovery-only BFS crawl, same `{urls, total_found, capped}` contract
+    shape as sitemap; always calls `crawl_site(..., run_full_audit=False)`,
+    per-page audits happen client-side via the orchestrator, not here),
+    `"site-health"` (domain-level checks only, so a same-domain crawl can
+    compute them once and pass them into `"audit"` calls via
+    `prefetchedDomainHealth`), `"pagespeed"` (PSI proxy). Each action is its
+    own `_handle_*` function with its own try/except preserving the original
+    per-endpoint error message; `_ACTIONS` maps `action` string → function.
+  - `api/ai.py` (`maxDuration` 30) — **AI layer** (`modules/ai_assist.py`,
+    all Groq), actions `"summary"`, `"chat"`, `"fix-suggestion"`, plus a
+    plain `GET` for config-status (key-presence only, no action needed since
+    it's the only `GET` in the group). All three POST actions go through the
+    shared `_chat()` HTTP helper (3x retry on 429/5xx, optional
+    `json_mode=True` requests Groq's `response_format: json_object` with an
+    automatic one-retry fallback to plain text if the model/account 400s on
+    it).
+    - `"summary"` → `explain_audit(all_issues, seo_score, api_key, url="",
+      context_label=None)`: plain-English summary + top actions, JSON-mode
+      parsed via `_parse_summary_reply` (falls back to the legacy
+      numbered-list regex parse if JSON parsing fails). `context_label`
+      overrides the default "for {url}" phrasing — the Results page's
+      sitewide summary passes "across N audited pages (sitewide)" with the
+      aggregated issue list instead of one page's. Rendered via the shared
+      `components/AiSummaryCard.tsx` on both Detail (one URL) and Results
+      (sitewide rollup), cached per `cacheKey` in `AuditContext`'s
+      `aiSummaryCache` (see `lib/aiSummaryCache.ts::fingerprintForSummary`)
+      so reopening unchanged data doesn't re-spend an API call.
+    - `"chat"` → `chat_with_assistant(messages, api_key, audit_context=None)`:
+      multi-turn chatbot, backing the global `components/ChatWidget.tsx`
+      floating widget (rendered in `AppShell.tsx`, on every page). Defaults
+      to app-help Q&A; on `/results`/`/detail` with results loaded, attaches
+      `auditContext` (url/score/top issues) **plus** `kb_notes` — matched
+      entries from `lib/commonIssuesKB.ts` for the top issues
+      (`ChatWidget.tsx::buildKbNotes`), so the assistant answers from the
+      app's own curated explanations instead of general model knowledge for
+      issues the KB covers. Conversation history is resent each turn (no
+      server-side session) and bounded on both ends
+      (`_MAX_CHAT_TURNS`/`_MAX_CHAT_CONTEXT_CHARS` in `ai_assist.py`,
+      `MAX_MESSAGES`/`MAX_MESSAGE_CHARS` in `api/ai.py`). The widget
+      progressively reveals a reply client-side (`ChatWidget.tsx::startReveal`,
+      triggered from the `send()` handler, not a `useEffect`, to dodge both
+      a visual flash and the `react-hooks/set-state-in-effect` lint rule) —
+      true server-side token streaming isn't reliably supported on Vercel's
+      classic Python (`BaseHTTPRequestHandler`) runtime these `api/*.py`
+      files use.
+    - `"fix-suggestion"` → `suggest_fix(issue_title, page_context, api_key)`:
+      drafts an actual ready-to-use replacement (e.g. a real meta
+      description) for a **narrow, well-defined set of issue types** — see
+      `_FIX_TARGET_PATTERNS`/`detect_fix_target` (title/description/H1
+      only). `lib/fixSuggestable.ts::detectFixTarget` mirrors the same
+      patterns client-side so `components/ui.tsx::IssueRow` only shows "✨
+      Suggest a fix" for issues it can actually draft for, without a
+      round-trip just to find out. Only wired up where a single concrete
+      page is in scope (Detail page passes `pageContext` —
+      title/description/h1/content snippet from
+      `r.metadata`/`r.heading_detail`/`r.content.intro_paragraphs` — into
+      every `IssueRow`); there's no sitewide equivalent since a fix draft
+      needs one page's real content to ground in, not an aggregate.
+  - `tests/test_api_consolidation.py` covers the `_ACTIONS` dispatch tables
+    directly (loaded via `importlib` since the filenames have hyphens); the
+    thin per-action handler bodies stay untested per this repo's existing
+    convention (they just call straight into already-tested `modules/*.py`
+    functions).
 - `modules/auditor.py`: core fetch + orchestration, SSRF guard (`validate_audit_url`).
   `audit_url(..., prefetched=None)` accepts an already-fetched page (the shape
   `fetch_page()` returns) to avoid a duplicate fetch when a caller (e.g.
@@ -131,7 +157,7 @@ prior standalone Streamlit SEO audit tool ported in on top.
   (default/googlebot/googlebot-mobile/bingbot), and 3 robots.txt modes
   (respect/ignore/ignore_but_report). `run_full_audit=True` will also run
   `audit_url()` per discovered page (useful for CLI/synchronous use, but NOT
-  what `api/crawl.py` uses, see above). Adopted from the `venkataramana-work`
+  what `api/audit-pipeline.py`'s "crawl" action uses, see above). Adopted from the `venkataramana-work`
   branch of this repo (do not delete that branch: it has a phases.md roadmap
   for a future async job-queue crawl architecture, phases 2-6, not yet built here).
 - `modules/technical_checks.py`: domain age (WHOIS), SSL, HTTPS enforcement
@@ -285,9 +311,9 @@ Flask process + daemon thread + SSE + on-disk checkpointing; the
 `venkataramana-work` branch's own crawl roadmap plans an async job-queue;
 neither model ports here as-is):
 1. One of three URL-resolution steps runs first, each bounded and fast enough
-   to fit in a single invocation: `api/sitemap.py` (sitemap/sitemap-index
+   to fit in a single invocation: `api/audit-pipeline.py`'s "sitemap" action (sitemap/sitemap-index
    fetch, cap 4000, `MAX_URL_CAP` in `modules/sitemap_extractor.py`),
-   `api/crawl.py` (BFS link discovery, `run_full_audit=False`, cap 200; lower
+   `api/audit-pipeline.py`'s "crawl" action (BFS link discovery, `run_full_audit=False`, cap 200; lower
    than sitemap's because discovery itself does a real per-page fetch), or
    the client-side CSV/paste parser (no network call, cap 4000, `MAX_LIMIT`
    in `app/technical-audit/page.tsx`).
@@ -342,7 +368,7 @@ need a nonce (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`,
 ## Env vars
 - `PSI_API_KEY` (optional): PageSpeed Insights quota
 - `GROQ_API_KEY` (optional): server-side default for the AI Summary feature
-  AND the chatbot (`api/chat.py`) — both share the same key; users can also
+  AND the chatbot (`api/ai.py`'s "chat" action) — both share the same key; users can also
   paste their own key in Settings (stored in browser localStorage only)
 
 ## Testing
@@ -480,11 +506,11 @@ Edstellar sitemap/pages and take 30+ seconds. Opt in with `RUN_LIVE_TESTS=1`.
   verify the client-side orchestrator/UI wiring independently.
 - `modules/crawler.py::crawl_site()` supports `run_full_audit=True` (runs
   `audit_url()` per discovered page, synchronously, inside the crawl loop),
-  but **`api/crawl.py` always passes `run_full_audit=False`**. Don't flip that:
+  but **`api/audit-pipeline.py`'s "crawl" action always passes `run_full_audit=False`**. Don't flip that:
   with the default `max_pages=50` and a real per-page audit taking 1-5s each,
   a synchronous full-audit crawl risks the 60s Vercel cap. Discovery and
   per-page auditing are deliberately two separate steps here (discovery in
-  `api/crawl.py`, auditing via the browser's `lib/crawl/orchestrator.ts`),
+  `api/audit-pipeline.py`'s "crawl" action, auditing via the browser's `lib/crawl/orchestrator.ts`),
   unlike the `venkataramana-work` branch's own single-endpoint design.
 - The `venkataramana-work` branch (`git fetch origin venkataramana-work`) has
   a `phases.md` with a fuller crawl-feature roadmap (async job queue +

@@ -13,7 +13,7 @@ export default function SettingsPage() {
   const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
-    fetch("/api/config-status")
+    fetch("/api/ai")
       .then((r) => r.json())
       .then((d) => {
         setPsiConfigured(Boolean(d.psiConfigured));

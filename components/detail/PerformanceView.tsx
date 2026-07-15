@@ -110,10 +110,10 @@ export function PerformanceView({ result }: { result: AuditResult }) {
     setPsiLoading(true);
     setPsiError(null);
     try {
-      const res = await fetch("/api/pagespeed", {
+      const res = await fetch("/api/audit-pipeline", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: r.url, strategy: "mobile" }),
+        body: JSON.stringify({ action: "pagespeed", url: r.url, strategy: "mobile" }),
       });
       const data = await res.json();
       if (!res.ok || data.success === false) {

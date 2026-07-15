@@ -218,10 +218,10 @@ function FixSuggestionButton({
     setResult(null);
     setCopied(false);
     try {
-      const res = await fetch("/api/fix-suggestion", {
+      const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ issue: issue.issue, pageContext, apiKey: apiKey || undefined }),
+        body: JSON.stringify({ action: "fix-suggestion", issue: issue.issue, pageContext, apiKey: apiKey || undefined }),
       });
       const data: FixSuggestion = await res.json();
       setResult(data);

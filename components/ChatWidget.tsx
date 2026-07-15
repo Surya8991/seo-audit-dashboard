@@ -144,10 +144,11 @@ export function ChatWidget() {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/chat", {
+      const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          action: "chat",
           messages: nextMessages,
           apiKey: groqApiKey || undefined,
           auditContext: auditContext || undefined,

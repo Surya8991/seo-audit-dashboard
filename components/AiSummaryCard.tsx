@@ -41,10 +41,11 @@ export function AiSummaryCard({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/ai-summary", {
+      const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          action: "summary",
           url: url || "",
           seoScore,
           allIssues: issues,

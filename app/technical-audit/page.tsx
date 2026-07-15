@@ -170,10 +170,10 @@ export default function TechnicalAuditPage() {
     setPhase("crawling");
     setError(null);
     try {
-      const res = await fetch("/api/audit", {
+      const res = await fetch("/api/audit-pipeline", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim(), auditType, checkLinks, fetchPagespeed }),
+        body: JSON.stringify({ action: "audit", url: url.trim(), auditType, checkLinks, fetchPagespeed }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -209,10 +209,11 @@ export default function TechnicalAuditPage() {
         return null;
       }
       setPhase("resolving");
-      const res = await fetch("/api/crawl", {
+      const res = await fetch("/api/audit-pipeline", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          action: "crawl",
           seedUrl: crawlSeedUrl.trim(),
           maxPages: clampedLimit,
           maxDepth,
@@ -238,10 +239,11 @@ export default function TechnicalAuditPage() {
       return null;
     }
     setPhase("resolving");
-    const res = await fetch("/api/sitemap", {
+    const res = await fetch("/api/audit-pipeline", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        action: "sitemap",
         sitemapUrl: sitemapUrl.trim(),
         limit: clampedLimit,
         includePattern: includePattern.trim() || undefined,

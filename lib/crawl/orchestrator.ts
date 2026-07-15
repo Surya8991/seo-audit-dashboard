@@ -35,11 +35,12 @@ export const DEFAULT_CONCURRENCY = 5;
 export const MAX_CONCURRENCY = 10;
 
 async function auditOne(url: string, opts: CrawlOptions, signal: AbortSignal): Promise<AuditResult> {
-  const res = await fetch("/api/audit", {
+  const res = await fetch("/api/audit-pipeline", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     signal,
     body: JSON.stringify({
+      action: "audit",
       url,
       auditType: opts.auditType ?? "auto",
       checkLinks: opts.checkLinks ?? true,
