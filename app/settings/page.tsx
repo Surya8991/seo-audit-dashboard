@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useAudit } from "@/lib/state/AuditContext";
 import { Card, PageHeader } from "@/components/ui";
-import { SettingsIcon } from "@/components/icons";
+import { MoonIcon, SettingsIcon, SunIcon } from "@/components/icons";
 import { useTheme } from "@/lib/useTheme";
 import { useAiConfigStatus } from "@/lib/useAiConfigStatus";
 
@@ -22,25 +22,34 @@ export default function SettingsPage() {
           Appearance
         </h3>
         <p className="mb-3 text-sm text-[var(--seo-text-light)]">
-          Switch between light and dark mode. This also toggles the small icon at the
-          bottom of the sidebar, they stay in sync.
+          Switch between light and dark mode. Your choice is saved in this browser and
+          applies everywhere, in sync with the toggle in the top navigation bar.
         </p>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          <SunIcon
+            size={16}
+            className={dark ? "text-[var(--seo-muted)]" : "text-[var(--seo-accent)]"}
+          />
           <button
             type="button"
             role="switch"
             aria-checked={dark}
+            aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
             onClick={() => setDark(!dark)}
             className="relative h-6 w-11 shrink-0 rounded-full transition-colors"
             style={{ backgroundColor: dark ? "var(--seo-accent)" : "var(--seo-border-strong)" }}
           >
             <span
-              className="absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform"
+              className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform"
               style={{ transform: dark ? "translateX(22px)" : "translateX(2px)" }}
             />
           </button>
-          <span className="text-sm text-[var(--seo-text)]">
-            {dark ? "Dark mode" : "Light mode"}
+          <MoonIcon
+            size={16}
+            className={dark ? "text-[var(--seo-accent)]" : "text-[var(--seo-muted)]"}
+          />
+          <span className="ml-1 text-sm font-medium text-[var(--seo-text)]">
+            {dark ? "Dark" : "Light"}
           </span>
         </div>
       </Card>

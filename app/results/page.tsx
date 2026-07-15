@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAudit } from "@/lib/state/AuditContext";
 import { Card, EmptyState, PageHeader, ScoreBadge, ScoreCircle, StatusPill } from "@/components/ui";
@@ -10,16 +10,8 @@ import { AiSummaryCard } from "@/components/AiSummaryCard";
 import { allIssuesOf, avgScore, issuesByTitle, type AggregatedIssue } from "@/lib/aggregate";
 import { difficultyBreakdown } from "@/lib/difficulty";
 import { downloadCsv, severityColor } from "@/lib/format";
-import { getBaseDomain } from "@/lib/linkAnalysis";
+import { categorizeUrl, categoryColor } from "@/lib/pageCategory";
 import type { AuditResult } from "@/lib/types";
-
-// Shares lib/linkAnalysis.ts's www-stripping so a sitewide audit groups
-// www.example.com and example.com as one domain here too — they used to
-// diverge (this page didn't strip www, the Links tab did), splitting one
-// site's results into two "domain" groups.
-function hostOf(url: string): string {
-  return getBaseDomain(url) || url;
-}
 
 function pathnameOf(url: string): string {
   try {
@@ -27,16 +19,6 @@ function pathnameOf(url: string): string {
   } catch {
     return url;
   }
-}
-
-/** First path segment of a URL, used to group results by site section
- * (matching how a sitemap.xml is typically organized by directory, e.g.
- * /blog/*, /course/*, /tag/*), so a sitewide audit reads as one section per
- * part of the site instead of one flat list. */
-function sectionOf(url: string): string {
-  const path = pathnameOf(url);
-  const segment = path.split("/").filter(Boolean)[0];
-  return segment || "(root)";
 }
 
 /**
@@ -113,7 +95,18 @@ function EffortChips({ result }: { result: AuditResult }) {
   );
 }
 
-/** One result row, shared between the flat and section-grouped table bodies. */
+/** Page-category badge for the Results "Type" column (Course/Blog/Topic/…). */
+function TypeBadge({ url, auditType }: { url: string; auditType?: string }) {
+  const category = categorizeUrl(url, auditType);
+  const c = categoryColor(category);
+  return (
+    <span className="pill" style={{ color: c.text, backgroundColor: c.bg }}>
+      {category}
+    </span>
+  );
+}
+
+/** One result row in the flat Results table. */
 function ResultRow({ r, onOpen }: { r: AuditResult; onOpen: (r: AuditResult) => void }) {
   const cl = r.technical_audit_checklist?.summary;
   const top = worstIssue(r);
@@ -127,6 +120,9 @@ function ResultRow({ r, onOpen }: { r: AuditResult; onOpen: (r: AuditResult) => 
         {r.status_code && r.status_code !== 200 ? (
           <span className="ml-2 text-xs text-[var(--seo-error)]">{r.status_code}</span>
         ) : null}
+      </td>
+      <td className="px-4 py-3">
+        <TypeBadge url={r.url} auditType={r.audit_type} />
       </td>
       <td className="px-4 py-3">
         <ScoreBadge score={r.seo_score ?? 0} />
@@ -194,10 +190,8 @@ export default function ResultsPage() {
   const [search, setSearch] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("score-asc");
   const [confirmClear, setConfirmClear] = useState(false);
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [h1ReportOpen, setH1ReportOpen] = useState(false);
-  const [sectionFilter, setSectionFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
   const [checklistFilter, setChecklistFilter] = useState<"all" | "has-fail" | "has-warning">("all");
 
   useEffect(() => {
@@ -209,9 +203,9 @@ export default function ResultsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navFilter]);
 
-  // Every distinct first-path-segment across all results, for the Section filter.
-  const sections = useMemo(() => {
-    return [...new Set(results.map((r) => sectionOf(r.url)))].sort();
+  // Every distinct page-category (Type) across all results, for the Type filter.
+  const types = useMemo(() => {
+    return [...new Set(results.map((r) => categorizeUrl(r.url, r.audit_type)))].sort();
   }, [results]);
 
   const filtered = useMemo(() => {
@@ -224,48 +218,18 @@ export default function ResultsPage() {
         if (brokenInt + brokenExt === 0) return false;
       }
       if (q && !r.url.toLowerCase().includes(q)) return false;
-      if (sectionFilter !== "all" && sectionOf(r.url) !== sectionFilter) return false;
+      if (typeFilter !== "all" && categorizeUrl(r.url, r.audit_type) !== typeFilter) return false;
       const cl = r.technical_audit_checklist?.summary;
       if (checklistFilter === "has-fail" && !(cl && cl.fail > 0)) return false;
       if (checklistFilter === "has-warning" && !(cl && cl.warning > 0)) return false;
       return true;
     });
-  }, [results, scoreMax, brokenOnly, search, sectionFilter, checklistFilter]);
+  }, [results, scoreMax, brokenOnly, search, typeFilter, checklistFilter]);
 
-  // Group the filtered rows by domain (one card per site), then by site
-  // section (first path segment, e.g. /blog/, /course/, /tag/) so a sitewide
-  // audit reads in the same hierarchy a sitemap.xml is usually organized by,
-  // instead of one flat alphabetical/score-sorted list.
-  const groups = useMemo(() => {
-    const byHost = new Map<string, AuditResult[]>();
-    for (const r of filtered) {
-      const h = hostOf(r.url);
-      if (!byHost.has(h)) byHost.set(h, []);
-      byHost.get(h)!.push(r);
-    }
-    return [...byHost.entries()]
-      .map(([host, rows]) => {
-        const bySection = new Map<string, AuditResult[]>();
-        for (const r of rows) {
-          const s = sectionOf(r.url);
-          if (!bySection.has(s)) bySection.set(s, []);
-          bySection.get(s)!.push(r);
-        }
-        const sectionGroups = [...bySection.entries()]
-          .map(([section, sectionRows]) => ({
-            section,
-            rows: sortRows(sectionRows, sortMode),
-          }))
-          .sort((a, b) => a.section.localeCompare(b.section));
-        return {
-          host,
-          rows: sortRows(rows, sortMode),
-          sectionGroups,
-          avg: avgScore(rows),
-        };
-      })
-      .sort((a, b) => a.avg - b.avg);
-  }, [filtered, sortMode]);
+  // Flat, sorted rows. The old domain/section hierarchy (a collapsible
+  // "example.com › /section" tree) was removed in favor of a single flat table
+  // with a Type column, per the requested design.
+  const sortedRows = useMemo(() => sortRows(filtered, sortMode), [filtered, sortMode]);
 
   function openDetail(r: AuditResult) {
     setSelectedUrlIndex(results.indexOf(r));
@@ -458,19 +422,19 @@ export default function ResultsPage() {
               ))}
             </select>
           </div>
-          {sections.length > 1 ? (
+          {types.length > 1 ? (
             <div>
               <label className="mb-1 block text-xs font-medium text-[var(--seo-muted)]">
-                Section
+                Type
               </label>
               <select
-                value={sectionFilter}
-                onChange={(e) => setSectionFilter(e.target.value)}
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
                 className="rounded-lg border border-[var(--seo-border)] bg-[var(--seo-card)] px-3 py-1.5 text-sm text-[var(--seo-text)]"
               >
-                <option value="all">All sections</option>
-                {sections.map((s) => (
-                  <option key={s} value={s}>/{s}</option>
+                <option value="all">All types</option>
+                {types.map((t) => (
+                  <option key={t} value={t}>{t}</option>
                 ))}
               </select>
             </div>
@@ -502,74 +466,34 @@ export default function ResultsPage() {
 
       <ExportBar results={filtered} totalCount={results.length} />
 
-      <div className="mb-4 flex flex-col gap-4">
-        {groups.map((g) => {
-          const isCollapsed = collapsed[g.host];
-          return (
-            <Card key={g.host} className="overflow-hidden p-0">
-              <button
-                type="button"
-                onClick={() => setCollapsed((c) => ({ ...c, [g.host]: !c[g.host] }))}
-                className="flex w-full items-center justify-between gap-3 border-b border-[var(--seo-border)] bg-[var(--table-header-bg)] px-4 py-2.5 text-left"
-              >
-                <span className="flex items-center gap-2">
-                  <span className={`text-[var(--seo-muted)] transition-transform ${isCollapsed ? "" : "rotate-90"}`}>▸</span>
-                  <span className="font-semibold text-[var(--seo-subheading)]">{g.host}</span>
-                  <span className="text-xs text-[var(--seo-muted)]">
-                    {g.rows.length} URL{g.rows.length > 1 ? "s" : ""}
-                  </span>
-                </span>
-                <span className="flex items-center gap-2 text-xs text-[var(--seo-muted)]">
-                  avg <ScoreBadge score={g.avg} />
-                </span>
-              </button>
-
-              {!isCollapsed ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-[var(--seo-border)] text-left text-xs uppercase tracking-wide text-[var(--seo-muted)]">
-                        <th className="px-4 py-2.5">URL</th>
-                        <th className="px-4 py-2.5">Score</th>
-                        <th className="px-4 py-2.5">Checklist</th>
-                        <th className="px-4 py-2.5">Fix effort</th>
-                        <th className="px-4 py-2.5">Top issue</th>
-                        <th className="px-4 py-2.5" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {g.sectionGroups.length > 1
-                        ? g.sectionGroups.map((sg) => {
-                            const sectionKey = `${g.host}/${sg.section}`;
-                            const sectionCollapsed = collapsedSections[sectionKey];
-                            return (
-                              <Fragment key={sg.section}>
-                                <tr
-                                  onClick={() =>
-                                    setCollapsedSections((c) => ({ ...c, [sectionKey]: !c[sectionKey] }))
-                                  }
-                                  className="cursor-pointer border-b border-[var(--seo-border)] bg-[var(--seo-card-alt)]"
-                                >
-                                  <td colSpan={6} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--seo-muted)]">
-                                    <span className={`mr-1.5 inline-block transition-transform ${sectionCollapsed ? "" : "rotate-90"}`}>▸</span>
-                                    /{sg.section} ({sg.rows.length})
-                                  </td>
-                                </tr>
-                                {!sectionCollapsed
-                                  ? sg.rows.map((r, idx) => <ResultRow key={r.url + idx} r={r} onOpen={openDetail} />)
-                                  : null}
-                              </Fragment>
-                            );
-                          })
-                        : g.rows.map((r, idx) => <ResultRow key={r.url + idx} r={r} onOpen={openDetail} />)}
-                    </tbody>
-                  </table>
-                </div>
-              ) : null}
-            </Card>
-          );
-        })}
-      </div>
+      <Card className="mb-4 overflow-hidden p-0">
+        {sortedRows.length === 0 ? (
+          <div className="px-4 py-10 text-center text-sm text-[var(--seo-muted)]">
+            No URLs match the current filters.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--seo-border)] bg-[var(--table-header-bg)] text-left text-xs uppercase tracking-wide text-[var(--seo-muted)]">
+                  <th className="px-4 py-2.5">URL</th>
+                  <th className="px-4 py-2.5">Type</th>
+                  <th className="px-4 py-2.5">Score</th>
+                  <th className="px-4 py-2.5">Checklist</th>
+                  <th className="px-4 py-2.5">Fix effort</th>
+                  <th className="px-4 py-2.5">Top issue</th>
+                  <th className="px-4 py-2.5" />
+                </tr>
+              </thead>
+              <tbody>
+                {sortedRows.map((r, idx) => (
+                  <ResultRow key={r.url + idx} r={r} onOpen={openDetail} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
 
       {/* Destructive action, deliberately separated from the filter/export
           controls above so it isn't a stray click away from routine actions. */}

@@ -6,8 +6,6 @@ import { useState } from "react";
 import type { ComponentType, SVGProps } from "react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { GlobalSearch } from "@/components/GlobalSearch";
-import { useAudit } from "@/lib/state/AuditContext";
-import { useAiConfigStatus } from "@/lib/useAiConfigStatus";
 import {
   GaugeIcon,
   ListChecksIcon,
@@ -69,27 +67,6 @@ function NavItemLink({
   );
 }
 
-function SessionPill() {
-  const { results, groqApiKey } = useAudit();
-  const { groqConfigured } = useAiConfigStatus();
-
-  const keyLabel = groqApiKey
-    ? "Custom key"
-    : groqConfigured === null
-      ? "Checking key…"
-      : groqConfigured
-        ? "Server key"
-        : "No AI key";
-
-  return (
-    <div className="hidden shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-[var(--seo-border)] bg-[var(--seo-card-bg-alt)] px-2.5 py-1.5 text-xs text-[var(--seo-text-light)] lg:flex">
-      <span className="tabular-nums">{results.length} URL{results.length === 1 ? "" : "s"}</span>
-      <span className="h-3 w-px bg-[var(--seo-border-strong)]" />
-      <span>{keyLabel}</span>
-    </div>
-  );
-}
-
 export function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -130,7 +107,6 @@ export function Navbar() {
             <PlusIcon size={15} />
             New Audit
           </button>
-          <SessionPill />
           <ThemeToggle />
         </div>
 
@@ -190,23 +166,11 @@ export function Navbar() {
             <PlusIcon size={15} />
             New Audit
           </button>
-          <div className="flex items-center justify-between border-t border-[var(--seo-border)] pt-3">
-            <SessionPillMobile />
+          <div className="flex items-center justify-end border-t border-[var(--seo-border)] pt-3">
             <ThemeToggle />
           </div>
         </div>
       ) : null}
     </header>
-  );
-}
-
-function SessionPillMobile() {
-  const { results, groqApiKey } = useAudit();
-  const { groqConfigured } = useAiConfigStatus();
-  const keyLabel = groqApiKey ? "Custom key" : groqConfigured ? "Server key" : "No AI key";
-  return (
-    <span className="text-xs text-[var(--seo-text-light)] tabular-nums">
-      {results.length} URL{results.length === 1 ? "" : "s"} · {keyLabel}
-    </span>
   );
 }
